@@ -1,6 +1,5 @@
-from .parser import ParseResult, _normalize_line_endings, _build_canonical_text, _split_paragraphs_drop_empty, _BuiltText
-
-from ..chunking.chunker import Document, DocumentStructure, OffsetRange, Page
+from .parser import ParseResult, _normalize_line_endings, _build_canonical_text, _split_paragraphs_drop_empty, _BuiltText, Document, SourceRef
+from pathlib import Path
 
 
 class PlainTextFallbackParser:
@@ -25,24 +24,14 @@ class PlainTextFallbackParser:
         paragraphs = _split_paragraphs_drop_empty(raw)
         built = _build_canonical_text(paragraphs)
 
-        # Minimal structure (v1)
-        structure = DocumentStructure(
-            paragraphs=built.paragraph_offsets,
-            headings=[],
-            pages=[
-                Page(
-                    offset=OffsetRange(start=0, end=len(built.text)),
-                    pagenumber=1,
-                )
-            ],
-        )
+        # Build Document with simple SourceRef
+        src = SourceRef(scheme="file", rel_path=getattr(inp, "filename", None) or inp.doc_id,
+                        display_name=Path(getattr(inp, "filename", inp.doc_id)).name)
 
         doc = Document(
             doc_id=inp.doc_id,
             text=built.text,
-            structure=structure,
-            structure_version="canon:1.0|plaintext:v1",
-            source=getattr(inp, "filename", None) or inp.doc_id,
+            source=src,
         )
 
         effective = "text/plain" if inp.mimetype == "application/octet-stream" else inp.mimetype

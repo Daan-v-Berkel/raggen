@@ -1,7 +1,8 @@
 from typing import Iterable, Any, Dict, List, Optional
+from pathlib import Path
 from .chunker import Chunker
 from .chunks import ChunkConfig, Chunk
-from ..parsing.parser import ParseInput, ParserService, ParserRegistry
+from ..parsing.parser import ParseInput, ParserService, ParserRegistry, SourceRef
 from ..logger import get_logger
 
 logger = get_logger("rag-engine.chunking.pipeline")
@@ -43,7 +44,7 @@ def chunk_files(file_refs: Iterable[Any], conf: ChunkConfig, registry: ParserReg
 
     Behavior
     - Skips items without data and logs errors
-    - Attempts to set Document.source from filename or doc_id
+    - Ensures Document.source is a SourceRef (or creates one from filename/doc_id)
     - Catches parse and chunking errors per-file and continues processing others
     """
 
@@ -78,12 +79,14 @@ def chunk_files(file_refs: Iterable[Any], conf: ChunkConfig, registry: ParserReg
             continue
 
         doc = result.document
-        # populate source if missing
+
+        # Ensure doc.source is a SourceRef; create one if parser didn't set it
         if getattr(doc, "source", None) is None:
             try:
-                doc.source = filename or doc.doc_id
+                rel = filename or doc.doc_id
+                doc.source = SourceRef(scheme="file", rel_path=rel, display_name=Path(rel).name)
             except Exception:
-                # pydantic models may be frozen; ignore if cannot set
+                # ignore if assignment not allowed
                 pass
 
         chunker = Chunker(doc)

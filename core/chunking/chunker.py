@@ -1,40 +1,8 @@
 from .chunks import ChunkConfig, Chunk
-from pydantic import BaseModel, NonNegativeInt
 import hashlib
 import json
-from typing import List, Tuple, Optional
+from typing import List, Any
 from langchain_text_splitters import RecursiveCharacterTextSplitter
-
-
-class OffsetRange(BaseModel):
-    start: NonNegativeInt
-    end: NonNegativeInt
-
-
-class Page(BaseModel):
-    offset: OffsetRange
-    pagenumber: NonNegativeInt
-
-
-class HeadingBlock(BaseModel):
-    offset: OffsetRange
-    level: NonNegativeInt  # heading level 1..6
-    text: str
-    path: list[str]
-
-
-class DocumentStructure(BaseModel):
-    paragraphs: list[OffsetRange]
-    headings: list[HeadingBlock]
-    pages: list[Page]
-
-
-class Document(BaseModel):
-    structure: DocumentStructure
-    doc_id: str
-    text: str
-    structure_version: str
-    source: str | None = None
 
 
 class ConfigError(ValueError):
@@ -57,7 +25,12 @@ class ConfigError(ValueError):
 
 class Chunker:
 
-    def __init__(self, doc: Document):
+    def __init__(self, doc: Any):
+        """Chunker operates on a simple Document-like object with attributes:
+        - doc_id: str
+        - text: str
+        - source: object (e.g., SourceRef)
+        """
         self.STRATEGIES = {
             "fixed": self._chunk_fixed,
             "headingAware": self._chunk_heading,
@@ -80,7 +53,7 @@ class Chunker:
             # Let Pydantic's own ValidationError bubble up unchanged
             raise
 
-        errors: list[str] = []
+        errors: List[str] = []
 
         # Relationship constraints
         if conf.chunk_size > 0 and conf.overlap >= conf.chunk_size:
@@ -98,20 +71,6 @@ class Chunker:
             errors.append(
                 "unit='tokens' requires a tokenizer configuration.")
 
-        if conf.include_metadata is not None:
-            # If user requests page metadata but doc has no pages, fail fast (or switch to warning later)
-            if conf.include_metadata.include_pages and len(self.document.structure.pages) == 0:
-                errors.append(
-                    "include_metadata.include_pages=True but Document.structure.pages is empty."
-                )
-
-        if conf.min_chunk_size > 0 and not conf.merge_small_chunks:
-            # technically shouldn't be possible, drops chunks if chuns are smaller then min_chunk_size
-            errors.append(
-                "min_chunk_size is set but merge_small_chunks=False. Either enable merge_small_chunks "
-                "or set min_chunk_size=0 to avoid ambiguous behavior."
-            )
-
         if errors:
             raise ConfigError("Invalid ChunkConfig:\n- " + "\n- ".join(errors))
 
@@ -122,78 +81,36 @@ class Chunker:
             conf.model_dump(), sort_keys=True, ensure_ascii=False)
         return hashlib.sha256(conf_json.encode("utf-8")).hexdigest()
 
-    def _find_offsets_sequential(self, text: str, pieces: List[str]) -> List[Tuple[int, int]]:
-        """
-        Deterministic offset finder:
-        searches each chunk after the previous one, so repeated substrings don't break offsets.
-        """
-        offsets: List[Tuple[int, int]] = []
-        cursor = 0
-        for p in pieces:
-            if not p:
-                continue
-            start = text.find(p, cursor)
-            if start == -1:
-                raise ValueError(
-                    "Could not find chunk text in original document text (offset mapping failed).")
-            end = start + len(p)
-            offsets.append((start, end))
-            cursor = max(cursor, end)  # move forward
-        return offsets
-
-    def _page_range_for_span(self, start: int, end: int) -> Tuple[Optional[int], Optional[int]]:
-        """
-        Very simple mapping: find pages whose offsets intersect [start,end).
-        """
-        pages = [p for p in self.document.structure.pages if not (
-            p.offset.end <= start or p.offset.start >= end)]
-        if not pages:
-            return None, None
-        return pages[0].pagenumber, pages[-1].pagenumber
-
-    def _heading_for_span(self, start: int, end: int) -> Tuple[Optional[str], Optional[list[str]]]:
-        """
-        Simplest mapping: pick the last heading whose start is before the chunk end.
-        """
-        candidates = [
-            h for h in self.document.structure.headings if h.offset.start < end]
-        if not candidates:
-            return None, None
-        h = candidates[-1]
-        return h.text, h.path
-
     def _enrich_chunks(self, conf: ChunkConfig, pieces: list[str]) -> list[Chunk]:
-        spans = self._find_offsets_sequential(self.document.text, pieces)
-
+        """Create Chunk objects from piece strings without relying on character offsets."""
         config_hash = self._stable_config_hash(conf)
 
         out: List[Chunk] = []
-        for idx, (piece, (start, end)) in enumerate(zip(pieces, spans)):
-            page_start, page_end = self._page_range_for_span(
-                start, end)
-            heading, section_path = self._heading_for_span(
-                start, end)
+        for idx, piece in enumerate(pieces):
+            chunk_id = f"{getattr(self.document, 'doc_id', 'unknown')}:{config_hash}:{idx}"
 
-            chunk_id = f"{self.document.doc_id}:{config_hash}:{idx}"
+            meta = {
+                "page_start": None,
+                "page_end": None,
+                "heading": None,
+                "section_path": None,
+                "source": getattr(self.document, "source", None),
+            }
+
+            stats = {
+                "char_count": len(piece) if piece is not None else None,
+                "token_count": None,
+            }
 
             out.append(
                 Chunk(
-                    doc_id=self.document.doc_id,
+                    doc_id=getattr(self.document, "doc_id", "unknown"),
                     chunk_index=idx,
                     text=piece,
-                    start_char=start,
-                    end_char=end,
-                    metadata={
-                        "page_start": page_start,
-                        "page_end": page_end,
-                        "heading": heading,
-                        "section_path": section_path,
-                        "source": getattr(self.document, "source", None),
-                    },
-                    stats={
-                        "char_count": len(piece),
-                        "token_count": None,  # TODO:add when adding token counting
-                    },
+                    start_char=None,
+                    end_char=None,
+                    metadata=meta,
+                    stats=stats,
                     config_hash=config_hash,
                     chunk_id=chunk_id,
                 )
@@ -205,20 +122,38 @@ class Chunker:
         pieces = self.STRATEGIES[conf.strategy](conf)
         return self._enrich_chunks(conf, pieces)
 
-    def _chunk_fixed(self, conf: ChunkConfig) -> list[Chunk]:
+    def _chunk_fixed(self, conf: ChunkConfig) -> list[str]:
         splitter = RecursiveCharacterTextSplitter(
             chunk_size=conf.chunk_size,
             chunk_overlap=conf.overlap,
             separators=conf.separators,
             keep_separator=conf.preserve_newlines,
         )
-        return splitter.split_text(self.document.text)
+        return splitter.split_text(getattr(self.document, "text", ""))
 
-    def _chunk_heading(self, conf: ChunkConfig) -> list[Chunk]:
-        pass
+    def _chunk_heading(self, conf: ChunkConfig) -> list[str]:
+        # Not implemented: fallback to fixed
+        return self._chunk_fixed(conf)
 
-    def _chunk_paragraph(self, conf: ChunkConfig) -> list[Chunk]:
-        pass
+    def _chunk_paragraph(self, conf: ChunkConfig) -> list[str]:
+        # Simple paragraph-based chunking: split on double-newline and then apply merging
+        text = getattr(self.document, "text", "")
+        paras = text.split("\n\n") if text else []
+        out: List[str] = []
+        for p in paras:
+            if p == "":
+                continue
+            if len(p) <= conf.chunk_size:
+                out.append(p)
+            else:
+                # fallback to fixed-size slicing within paragraph
+                start = 0
+                while start < len(p):
+                    end = min(len(p), start + conf.chunk_size)
+                    out.append(p[start:end])
+                    start = max(0, end - conf.overlap)
+        return out
 
-    def _chunk_token(self, conf: ChunkConfig) -> list[Chunk]:
-        pass
+    def _chunk_token(self, conf: ChunkConfig) -> list[str]:
+        # Token-aware chunking not implemented yet; fallback to fixed
+        return self._chunk_fixed(conf)

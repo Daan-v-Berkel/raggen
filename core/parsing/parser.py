@@ -1,6 +1,5 @@
-from typing import Dict, Protocol, List
+from typing import Dict, Protocol, List, Optional
 from pydantic import BaseModel
-from ..chunking.chunker import Document, OffsetRange
 from dataclasses import dataclass
 import re
 
@@ -12,10 +11,22 @@ class ParseInput(BaseModel):
     filename: str | None
 
 
+class SourceRef(BaseModel):
+    scheme: str = "file"
+    rel_path: str
+    display_name: Optional[str] = None
+
+
+class Document(BaseModel):
+    doc_id: str
+    source: SourceRef
+    text: str
+
+
 class ParseResult(BaseModel):
     """
-    Wrapper so the pipeline can introspect how parsing happened without
-    polluting Document for now.
+    Wrapper so the pipeline can introspect how parsing happened.
+    document: Document produced by the parser
     """
     document: Document
     parser_id: str                # e.g. "docx:v1", "plaintext:v1"
@@ -61,12 +72,6 @@ class ParserService:
         return parser.parse(inp)
 
 
-@dataclass(frozen=True)
-class _BuiltText:
-    text: str
-    paragraph_offsets: List[OffsetRange]
-
-
 def _normalize_line_endings(s: str) -> str:
     return s.replace("\r\n", "\n").replace("\r", "\n")
 
@@ -85,25 +90,19 @@ def _split_paragraphs_drop_empty(s: str) -> List[str]:
     return [p for p in parts if p != ""]
 
 
+@dataclass(frozen=True)
+class _BuiltText:
+    text: str
+    paragraphs: List[str]
+
+
 def _build_canonical_text(paragraphs: List[str]) -> _BuiltText:
     """
-    Join paragraphs with '\n\n' and compute deterministic offsets against final text.
+    Join paragraphs with '\n\n' and return the canonical text and paragraph list.
     """
     buf: List[str] = []
-    offsets: List[OffsetRange] = []
-    cursor = 0
-
     for i, p in enumerate(paragraphs):
         if i > 0:
-            sep = "\n\n"
-            buf.append(sep)
-            cursor += len(sep)
-
-        start = cursor
+            buf.append("\n\n")
         buf.append(p)
-        cursor += len(p)
-        end = cursor
-
-        offsets.append(OffsetRange(start=start, end=end))
-
-    return _BuiltText(text="".join(buf), paragraph_offsets=offsets)
+    return _BuiltText(text="".join(buf), paragraphs=paragraphs)

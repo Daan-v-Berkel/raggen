@@ -1,5 +1,5 @@
 from pydantic import BaseModel, NonNegativeInt
-from typing import Literal
+from typing import Literal, Optional, List
 
 ChunkStrategy = Literal["fixed", "headingAware",
                         "paragraphMerge", "tokenAware"]
@@ -43,25 +43,26 @@ class Chunk(BaseModel):
     chunk_index: NonNegativeInt
 
     text: str
-    start_char: int                    # offsets relative to *input text*
-    end_char: int                      # exclusive end
+    start_char: Optional[int] = None                    # offsets relative to *input text*, optional
+    end_char: Optional[int] = None                      # exclusive end, optional
 
     class MetaData(BaseModel):
-        page_start: NonNegativeInt
-        page_end: NonNegativeInt
-        heading: str | None
-        section_path: list[str] | None
-        source: str | None
+        page_start: Optional[int] = None
+        page_end: Optional[int] = None
+        heading: Optional[str] = None
+        section_path: Optional[List[str]] = None
+        source: Optional[object] = None
 
     metadata: MetaData
 
     class Stats(BaseModel):
-        char_count: NonNegativeInt | None
-        token_count: NonNegativeInt | None
+        char_count: Optional[NonNegativeInt] = None
+        token_count: Optional[NonNegativeInt] = None
 
     stats: Stats
 
     config_hash: str                   # helps trace what produced it
+
 
 
 DEFAULT_CHUNK_CONFIG = ChunkConfig(
