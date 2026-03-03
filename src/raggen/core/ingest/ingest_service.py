@@ -3,7 +3,8 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Dict, Any
 from raggen.core.ingest.config import ProjectConfig, default_project_config
-from raggen.core.ingest.logging import log_stage, log_error
+from raggen.core.ingest.logging import log_stage, log_error, logger
+from raggen.core.ingest.gating import should_ingest_raw_bytes, should_ingest_parsed_document
 from raggen.core.parsing.parser import ParserRegistry, ParseInput, ParserService
 from raggen.core.parsing.PlainTextParser import PlainTextFallbackParser
 from raggen.core.chunking.chunks import DEFAULT_CHUNK_CONFIG
@@ -16,9 +17,9 @@ import fnmatch
 
 def _load_files(root: Path, ignore_patterns: list[str]):
     files = []
+    warnings: dict = {"empty_bytes": 0}
     for dirpath, dirnames, filenames in os.walk(root):
-        dirnames[:] = [d for d in dirnames if not d.startswith(
-            '.') and d not in {".git", "node_modules", "__pycache__"}]
+        dirnames[:] = [d for d in dirnames if not d.startswith('.') and d not in {".git", "node_modules", "__pycache__"}]
         for fn in filenames:
             if fn.startswith('.'):
                 continue
@@ -32,9 +33,17 @@ def _load_files(root: Path, ignore_patterns: list[str]):
                 if fnmatch.fnmatch(rel, pat) or fnmatch.fnmatch(fn, pat):
                     skip = True
                     break
-            if not skip:
-                files.append(p)
-    return files
+            if skip:
+                continue
+            try:
+                if p.stat().st_size == 0:
+                    warnings["empty_bytes"] += 1
+                    continue
+            except Exception:
+                # Could not stat file; skip silently
+                continue
+            files.append(p)
+    return files, warnings
 
 
 def _stable_chunk_config_hash(chunk_cfg) -> str:
@@ -77,7 +86,9 @@ def init_and_ingest(*, cfg: ProjectConfig, destructive_init: bool = False) -> Di
     engine = init_database(rag_cfg, destructive=destructive_init)
     backend = getattr(engine, '_rag_vector_backend', None)
     # scan
-    files = _load_files(root, cfg.scan.ignore if cfg.scan.ignore else [])
+    files, initial_warnings = _load_files(root, cfg.scan.ignore if cfg.scan.ignore else [])
+    # total files scanned includes skipped empty files
+    files_scanned = len(files) + sum(initial_warnings.values())
     log_stage('scan', {'files': len(files)})
     registry = ParserRegistry(fallback_parser=PlainTextFallbackParser())
     parser_service = ParserService(registry)
@@ -86,7 +97,19 @@ def init_and_ingest(*, cfg: ProjectConfig, destructive_init: bool = False) -> Di
     chunk_count = 0
     emb_count = 0
     errors = []
+    # aggregate warnings
+    warnings_agg: dict[str,int] = {}
+    for k, v in initial_warnings.items():
+        warnings_agg[k] = warnings_agg.get(k, 0) + v
     for p in files:
+        # gating: raw bytes
+        data = p.read_bytes()
+        ok, reason = should_ingest_raw_bytes(data)
+        if not ok:
+            logger.warning("Skipping %s: empty file (0 bytes)", str(p))
+            warnings_agg['empty_bytes'] = warnings_agg.get('empty_bytes', 0) + 1
+            continue
+
         try:
             data = p.read_bytes()
             doc_id = str(p.relative_to(root))
@@ -95,6 +118,12 @@ def init_and_ingest(*, cfg: ProjectConfig, destructive_init: bool = False) -> Di
                              mimetype=mimetype, filename=p.name)
             result = parser_service.parse_document(inp)
             doc = result.document
+            # gating: parsed document
+            ok2, reason2 = should_ingest_parsed_document(doc)
+            if not ok2:
+                logger.warning("Skipping %s: parser produced empty text", doc_id)
+                warnings_agg['empty_text_after_parse'] = warnings_agg.get('empty_text_after_parse', 0) + 1
+                continue
             chunker = Chunker(doc)
             chunks = chunker.chunk(DEFAULT_CHUNK_CONFIG)
             # embed
@@ -152,9 +181,20 @@ def init_and_ingest(*, cfg: ProjectConfig, destructive_init: bool = False) -> Di
         except Exception as exc:
             log_error(str(p), 'ingest', exc)
             errors.append({'path': str(p), 'error': str(exc)})
-    log_stage('ingest_done', {'docs': doc_count,
-              'chunks': chunk_count, 'embeddings': emb_count})
-    return {'docs': doc_count, 'chunks': chunk_count, 'embeddings': emb_count, 'errors': errors}
+    log_stage('ingest_done', {'docs': doc_count, 'chunks': chunk_count, 'embeddings': emb_count})
+    # compute skipped/docs parsed
+    docs_skipped = sum(warnings_agg.values())
+    result = {
+        'files_scanned': files_scanned,
+        'docs_parsed': doc_count,
+        'docs_skipped': docs_skipped,
+        'skip_reasons': warnings_agg,
+        'docs': doc_count,
+        'chunks': chunk_count,
+        'embeddings': emb_count,
+        'errors': errors,
+    }
+    return result
 
 
 def ingest_only(*, cfg: ProjectConfig) -> Dict[str, Any]:
