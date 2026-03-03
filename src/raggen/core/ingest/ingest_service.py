@@ -17,7 +17,8 @@ import fnmatch
 def _load_files(root: Path, ignore_patterns: list[str]):
     files = []
     for dirpath, dirnames, filenames in os.walk(root):
-        dirnames[:] = [d for d in dirnames if not d.startswith('.') and d not in {".git", "node_modules", "__pycache__"}]
+        dirnames[:] = [d for d in dirnames if not d.startswith(
+            '.') and d not in {".git", "node_modules", "__pycache__"}]
         for fn in filenames:
             if fn.startswith('.'):
                 continue
@@ -36,8 +37,25 @@ def _load_files(root: Path, ignore_patterns: list[str]):
     return files
 
 
+def _stable_chunk_config_hash(chunk_cfg) -> str:
+    import hashlib
+    import json
+    # chunk_cfg may be a dataclass or a Pydantic model; try to obtain a dict
+    try:
+        cfg_dict = chunk_cfg.__dict__
+    except Exception:
+        try:
+            cfg_dict = chunk_cfg.model_dump()
+        except Exception:
+            # fallback: str repr
+            cfg_dict = str(chunk_cfg)
+    js = json.dumps(cfg_dict, sort_keys=True, ensure_ascii=False)
+    return hashlib.sha256(js.encode("utf-8")).hexdigest()
+
+
 def _build_rag_init_config(cfg: ProjectConfig) -> RagInitConfig:
     notes = {"vector_backend_import": cfg.storage.vector_backend_import}
+    chunk_hash = _stable_chunk_config_hash(cfg.chunking)
     return RagInitConfig(
         backend_key=cfg.storage.backend_key,
         vector_backend_import=cfg.storage.vector_backend_import,
@@ -45,7 +63,7 @@ def _build_rag_init_config(cfg: ProjectConfig) -> RagInitConfig:
         embedding_model_id=cfg.embedding.model_id,
         embedding_dim=cfg.embedding.dim,
         embedding_normalized=cfg.embedding.normalize,
-        chunk_config_hash=DEFAULT_CHUNK_CONFIG.get('chunk_config_hash', ''),
+        chunk_config_hash=chunk_hash,
         notes=notes,
     )
 
@@ -73,13 +91,15 @@ def init_and_ingest(*, cfg: ProjectConfig, destructive_init: bool = False) -> Di
             data = p.read_bytes()
             doc_id = str(p.relative_to(root))
             mimetype = 'application/octet-stream'
-            inp = ParseInput(doc_id=doc_id, data=data, mimetype=mimetype, filename=p.name)
+            inp = ParseInput(doc_id=doc_id, data=data,
+                             mimetype=mimetype, filename=p.name)
             result = parser_service.parse_document(inp)
             doc = result.document
             chunker = Chunker(doc)
             chunks = chunker.chunk(DEFAULT_CHUNK_CONFIG)
             # embed
-            em_results = embed_chunks(embedder, chunks, batch_size=cfg.embedding.batch_size, normalize=cfg.embedding.normalize)
+            em_results = embed_chunks(
+                embedder, chunks, batch_size=cfg.embedding.batch_size, normalize=cfg.embedding.normalize)
             # build rows
             document_row = {
                 'doc_id': doc.doc_id,
@@ -90,7 +110,7 @@ def init_and_ingest(*, cfg: ProjectConfig, destructive_init: bool = False) -> Di
                 'parsed_at': '',
                 'parser_id': 'plain',
                 'structure_version': 'v1',
-                'text_char_len': len(doc.canonical_text),
+                'text_char_len': len(doc.text),
             }
             chunk_rows = []
             embedding_meta_rows = []
@@ -132,7 +152,8 @@ def init_and_ingest(*, cfg: ProjectConfig, destructive_init: bool = False) -> Di
         except Exception as exc:
             log_error(str(p), 'ingest', exc)
             errors.append({'path': str(p), 'error': str(exc)})
-    log_stage('ingest_done', {'docs': doc_count, 'chunks': chunk_count, 'embeddings': emb_count})
+    log_stage('ingest_done', {'docs': doc_count,
+              'chunks': chunk_count, 'embeddings': emb_count})
     return {'docs': doc_count, 'chunks': chunk_count, 'embeddings': emb_count, 'errors': errors}
 
 

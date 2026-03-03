@@ -36,8 +36,5 @@ def store_document_bundle(
         store.upsert_chunks(conn, chunk_rows)
         store.upsert_embedding_meta(conn, embedding_meta_rows)
         # call vector backend - backends expect Engine or Connection; prefer conn if supported
-        try:
-            vector_backend.upsert_vectors(conn, vectors=embeddings, embedding_model_id=cfg.embedding_model_id, dim=cfg.embedding_dim, normalized=cfg.embedding_normalized)
-        except TypeError:
-            # backend may expect engine
-            vector_backend.upsert_vectors(engine, vectors=embeddings, embedding_model_id=cfg.embedding_model_id, dim=cfg.embedding_dim, normalized=cfg.embedding_normalized)
+        # Let backend accept either a Connection or Engine. Prefer passing the connection to avoid nested transactions.
+        vector_backend.upsert_vectors(conn, vectors=embeddings, embedding_model_id=cfg.embedding_model_id, dim=cfg.embedding_dim, normalized=cfg.embedding_normalized)

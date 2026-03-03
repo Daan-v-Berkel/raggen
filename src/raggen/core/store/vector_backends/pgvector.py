@@ -32,7 +32,7 @@ class PgVectorBackend(VectorBackend):
 
     def upsert_vectors(
         self,
-        engine: Engine,
+        engine_or_conn,
         *,
         vectors: List[Tuple[str, List[float]]],
         embedding_model_id: str,
@@ -44,7 +44,7 @@ class PgVectorBackend(VectorBackend):
             if len(vec) != dim:
                 raise ValueError(f"Vector for {cid} has length {len(vec)} != {dim}")
         # Insert using parameterized query; use string form for vector literal
-        with engine.begin() as conn:
+        def _do_upsert(conn):
             stmt = (
                 "INSERT INTO chunk_vectors (chunk_id, embedding, embedding_model_id, normalized) VALUES (:chunk_id, :vec::vector(%d), :model, :norm) "
                 "ON CONFLICT (chunk_id) DO UPDATE SET embedding = EXCLUDED.embedding, embedding_model_id = EXCLUDED.embedding_model_id, normalized = EXCLUDED.normalized"
@@ -53,3 +53,12 @@ class PgVectorBackend(VectorBackend):
             for cid, vec in vectors:
                 vec_str = "[" + ",".join(str(float(x)) for x in vec) + "]"
                 conn.execute(stmt, {"chunk_id": cid, "vec": vec_str, "model": embedding_model_id, "norm": normalized})
+
+        from sqlalchemy.engine import Connection, Engine
+        if isinstance(engine_or_conn, Connection):
+            _do_upsert(engine_or_conn)
+        elif isinstance(engine_or_conn, Engine):
+            with engine_or_conn.begin() as conn:
+                _do_upsert(conn)
+        else:
+            _do_upsert(engine_or_conn)

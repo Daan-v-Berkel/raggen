@@ -61,7 +61,7 @@ class SQLiteVecBackend(VectorBackend):
 
     def upsert_vectors(
         self,
-        engine: Engine,
+        engine_or_conn,
         *,
         vectors: List[Tuple[str, List[float]]],
         embedding_model_id: str,
@@ -72,11 +72,23 @@ class SQLiteVecBackend(VectorBackend):
         for cid, vec in vectors:
             if len(vec) != dim:
                 raise ValueError(f"Vector for {cid} has length {len(vec)} != {dim}")
-        # Use fallback table for portability: store JSON array
-        with engine.begin() as conn:
+
+        # Accept either a Connection or an Engine. If given an Engine, open a transaction; if given a Connection, use it.
+        from sqlalchemy.engine import Connection, Engine
+
+        def _do_upsert(conn):
             for cid, vec in vectors:
                 vec_str = "[" + ",".join(str(float(x)) for x in vec) + "]"
                 conn.execute(
                     "INSERT OR REPLACE INTO chunk_vectors_flat (chunk_id, embedding_json, embedding_model_id, normalized) VALUES (:cid, :vec, :model, :norm)",
                     {"cid": cid, "vec": vec_str, "model": embedding_model_id, "norm": normalized},
                 )
+
+        if isinstance(engine_or_conn, Connection):
+            _do_upsert(engine_or_conn)
+        elif isinstance(engine_or_conn, Engine):
+            with engine_or_conn.begin() as conn:
+                _do_upsert(conn)
+        else:
+            # fallback: assume it has execute()
+            _do_upsert(engine_or_conn)
