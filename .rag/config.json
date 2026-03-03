@@ -2,8 +2,10 @@
   "vector_backend": "sqlite_vec",
   "chunking": {
     "strategy": "fixed",
-    "chunk_size": 500,
-    "overlap": 50
+    "chunk_size": 800,
+    "overlap": 100
   },
-  "embedding_model": "bge-small-en"
+  "embedding_model": "sentence-transformers/all-MiniLM-L6-v2",
+  "ignore_file": ".gitignore",
+  "content_type": "code"
 }
