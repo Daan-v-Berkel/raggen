@@ -10,7 +10,7 @@ def main(argv=None):
 
     init_p = sub.add_parser("init")
     init_p.add_argument("--non-interactive", action="store_true")
-    init_p.add_argument("--destructive", action="store_true")
+    init_p.add_argument("--force", action="store_true")
     init_p.add_argument("--root", default=".")
 
     ingest_p = sub.add_parser("ingest")
@@ -19,7 +19,7 @@ def main(argv=None):
     args = parser.parse_args(argv)
 
     if args.command == "init":
-        init_cmd.run_init(root=args.root, non_interactive=args.non_interactive, destructive=args.destructive)
+        init_cmd.run_init(root=args.root, non_interactive=args.non_interactive, force=args.force)
     elif args.command == "ingest":
         ingest_cmd.run_ingest(config_path=args.config)
     else:

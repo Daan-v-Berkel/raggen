@@ -6,15 +6,31 @@ from ...core.ingest.config import ProjectConfig, save_project_config, default_pr
 from ...core.ingest.ingest_service import init_and_ingest
 
 
-def run_init(*, root: str = '.', non_interactive: bool = False, destructive: bool = False) -> None:
+def run_init(*, root: str = '.', non_interactive: bool = False, force: bool = False, destructive: bool = False) -> None:
     root_p = Path(root).resolve()
     cfg = default_project_config(root_p)
     cfg_path = root_p / '.rag' / 'config.toml'
+
+    # Guardrail: refuse to overwrite existing config unless --force is used
+    if cfg_path.exists() and not force:
+        print("Project already initialised.\nUse --force to overwrite existing configuration.")
+        raise SystemExit(1)
+
+    # If force requested and .rag exists, remove it entirely
+    if force and (root_p / '.rag').exists():
+        print("Overwriting existing project configuration...")
+        import shutil
+
+        shutil.rmtree(root_p / '.rag')
+
+    # ensure .rag exists
     os.makedirs(root_p / '.rag', exist_ok=True)
+
     if non_interactive:
         save_project_config(cfg, cfg_path)
         print(f"Wrote config to {cfg_path}")
         return
+
     # interactive: simple prompt flow
     print(f"Initializing project at {root_p}")
     use_git = input("Use .gitignore? (y/n) [y]: ").strip().lower() or 'y'
@@ -57,7 +73,7 @@ def run_init(*, root: str = '.', non_interactive: bool = False, destructive: boo
     confirm = input(
         "Initialize DB and ingest now? (y/n) [n]: ").strip().lower() or 'n'
     if confirm.startswith('y'):
-        stats = init_and_ingest(cfg=cfg, destructive_init=destructive)
+        stats = init_and_ingest(cfg=cfg, destructive_init=False)
         print("Ingest completed:", stats)
     else:
         print("Done. Run `rag ingest` to perform ingestion later.")
