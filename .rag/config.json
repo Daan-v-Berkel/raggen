@@ -1,0 +1,9 @@
+{
+  "vector_backend": "sqlite_vec",
+  "chunking": {
+    "strategy": "fixed",
+    "chunk_size": 500,
+    "overlap": 50
+  },
+  "embedding_model": "bge-small-en"
+}

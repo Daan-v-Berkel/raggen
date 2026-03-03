@@ -17,6 +17,10 @@ Behavior:
 
 This script is intended for local manual testing only.
 """
+from raggen.core.parsing.parser import ParserRegistry, ParseInput, ParserService
+from raggen.core.parsing.PlainTextParser import PlainTextFallbackParser
+from raggen.core.chunking.chunks import DEFAULT_CHUNK_CONFIG
+from raggen.core.chunking.chunker import Chunker
 import argparse
 import os
 import sys
@@ -27,13 +31,9 @@ import fnmatch
 REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO_ROOT))
 
-from core.chunking.chunker import Chunker
-from core.chunking.chunks import DEFAULT_CHUNK_CONFIG
-from core.parsing.PlainTextParser import PlainTextFallbackParser
-from core.parsing.parser import ParserRegistry, ParseInput, ParserService
 
-
-BUILTIN_SKIP_DIRS = {".git", ".venv", "venv", "env", "__pycache__", "logs", ".rag", "node_modules"}
+BUILTIN_SKIP_DIRS = {".git", ".venv", "venv", "env",
+                     "__pycache__", "logs", ".rag", "node_modules"}
 
 
 def load_ignore_patterns(ignorefile: Path):
@@ -71,7 +71,8 @@ def scan_files(root: Path, ignore_patterns: list[str]):
     files = []
     for dirpath, dirnames, filenames in os.walk(root):
         # skip built-in directories
-        dirnames[:] = [d for d in dirnames if d not in BUILTIN_SKIP_DIRS and not d.startswith('.')]
+        dirnames[:] = [
+            d for d in dirnames if d not in BUILTIN_SKIP_DIRS and not d.startswith('.')]
         for fn in filenames:
             if fn.startswith('.'):
                 continue
@@ -87,8 +88,10 @@ def scan_files(root: Path, ignore_patterns: list[str]):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument('root', nargs='?', default=str(Path.cwd()), help='Project root to scan (first arg)')
-    ap.add_argument('ignorefile', nargs='?', help='Optional ignore file (second arg)')
+    ap.add_argument('root', nargs='?', default=str(Path.cwd()),
+                    help='Project root to scan (first arg)')
+    ap.add_argument('ignorefile', nargs='?',
+                    help='Optional ignore file (second arg)')
     args = ap.parse_args()
 
     root = Path(args.root).resolve()
@@ -119,7 +122,8 @@ def main():
         filename = doc_id
 
         try:
-            inp = ParseInput(doc_id=doc_id, data=data, mimetype=mimetype, filename=filename)
+            inp = ParseInput(doc_id=doc_id, data=data,
+                             mimetype=mimetype, filename=filename)
         except Exception as e:
             print(f"Failed to build ParseInput for {doc_id}: {e}")
             continue
@@ -154,6 +158,7 @@ def main():
         print(f"Document: {doc_id} -> {count} chunks")
 
     print(f"Produced {total_chunks} chunks from {len(parsed)} documents")
+    print(f"Example Chunk: {chunks[0]}")
 
 
 if __name__ == '__main__':

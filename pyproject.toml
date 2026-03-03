@@ -1,0 +1,19 @@
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "raggen"
+version = "0.1.0"
+description = "Local-first RAG pipeline + CLI workspace"
+requires-python = ">=3.10"
+dependencies = ["sqlite-vec<=0.1.0"]
+
+[project.scripts]
+rag = "raggen.cli.cli:main"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
