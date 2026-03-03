@@ -11,3 +11,15 @@ class AlreadyInitializedError(Exception):
 
 class InvalidConfigError(Exception):
     pass
+
+
+class BackendLoadError(Exception):
+    pass
+
+
+class BackendNotSupportedError(Exception):
+    pass
+
+
+class VectorSchemaError(Exception):
+    pass

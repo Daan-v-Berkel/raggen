@@ -18,6 +18,7 @@ class RagInitConfig:
     query_model_id: Optional[str] = None
     chunk_config_hash: str = ""
     notes: Dict[str, Any] = field(default_factory=dict)
+    vector_backend_import: str = ""
 
     def to_row(self) -> Dict[str, Any]:
         now = datetime.now(timezone.utc)
