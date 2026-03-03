@@ -2,7 +2,7 @@ import json
 import sqlite3
 from pathlib import Path
 from typing import Optional
-from datetime import datetime
+from datetime import datetime, timezone
 import hashlib
 
 
@@ -85,8 +85,10 @@ def _init_db(conn: sqlite3.Connection, config: dict) -> None:
       created_at TEXT NOT NULL
     );
     ''')
-    cur.execute('CREATE INDEX IF NOT EXISTS chunks_doc_id_idx ON chunks(doc_id);')
-    cur.execute('CREATE INDEX IF NOT EXISTS chunks_doc_order_idx ON chunks(doc_id, chunk_index);')
+    cur.execute(
+        'CREATE INDEX IF NOT EXISTS chunks_doc_id_idx ON chunks(doc_id);')
+    cur.execute(
+        'CREATE INDEX IF NOT EXISTS chunks_doc_order_idx ON chunks(doc_id, chunk_index);')
 
     # 4) Embedding metadata
     cur.execute('''
@@ -110,13 +112,15 @@ def _init_db(conn: sqlite3.Connection, config: dict) -> None:
 
     try:
         # Attempt to create sqlite-vec virtual table; some sqlite-vec backends accept FLOAT[<dim>]
-        cur.execute(f"CREATE VIRTUAL TABLE IF NOT EXISTS chunk_vectors USING vec0( chunk_id TEXT PRIMARY KEY, embedding FLOAT[{embedding_dim}] );")
+        cur.execute(
+            f"CREATE VIRTUAL TABLE IF NOT EXISTS chunk_vectors USING vec0( chunk_id TEXT PRIMARY KEY, embedding FLOAT[{embedding_dim}] );")
     except sqlite3.OperationalError:
         # Fallback: store vectors as blob
-        cur.execute('CREATE TABLE IF NOT EXISTS chunk_vectors (chunk_id TEXT PRIMARY KEY, embedding BLOB);')
+        cur.execute(
+            'CREATE TABLE IF NOT EXISTS chunk_vectors (chunk_id TEXT PRIMARY KEY, embedding BLOB);')
 
     # Insert or replace project row (single row id=1)
-    now = datetime.utcnow().isoformat() + "Z"
+    now = datetime.now(timezone.utc)
     schema_version = "v1"
     backend = config.get("vector_backend", "sqlite_vec")
     embedding_model_id = config.get("embedding_model", "")
