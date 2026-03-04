@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from typing import List, Dict, Any
+from sqlalchemy import select
 from sqlalchemy.engine import Engine, Connection
 from .metadata_schema import documents, chunks, embeddings
 
@@ -21,6 +22,19 @@ class MetadataStore:
         if not rows:
             return
         upsert_rows(conn, embeddings, rows, ["chunk_id"])
+
+    def fetch_all_chunk_ids(self, conn: Connection, doc_ids: List[str]) -> List[str]:
+        chunk_ids = list(
+            conn.scalars(
+                select(chunks.c.chunk_id).where(
+                    chunks.c.doc_id.in_(doc_ids))
+            )
+        )
+        return chunk_ids
+
+    def delete_documents(self, conn: Connection, doc_ids: List[str]) -> None:
+        stmt = documents.delete().where(documents.c.doc_id.in_(doc_ids))
+        conn.execute(stmt)
 
 
 def upsert_rows(conn: Connection, table, rows: List[Dict[str, Any]], pk_cols: List[str]) -> None:
@@ -46,3 +60,8 @@ def upsert_rows(conn: Connection, table, rows: List[Dict[str, Any]], pk_cols: Li
             conn.execute(table.delete().where(cond))
     # bulk insert
     conn.execute(table.insert(), rows)
+
+
+def fetch_all_document_ids(engine) -> List[str]:
+    with engine.begin() as conn:
+        return list(conn.scalars(select(documents.c.doc_id)))

@@ -1,94 +1,206 @@
 from __future__ import annotations
 
+import struct
 from typing import List, Tuple
-from sqlalchemy.engine import Engine
-from .base import VectorBackend
-import os
+
+from sqlalchemy import text, bindparam
+from sqlalchemy.engine import Engine, Connection
+
+from raggen.core.store.vector_backends.base import VectorBackend
+
+
+def _serialize_f32(vec: List[float]) -> bytes:
+    """Serialize floats into sqlite-vec expected raw float32 bytes."""
+    # sqlite-vec expects float32 bytes; struct 'f' is C float (usually 32-bit)
+    return struct.pack(f"{len(vec)}f", *[float(x) for x in vec])
 
 
 class SQLiteVecBackend(VectorBackend):
     key = "sqlite_vec"
 
-    def _load_vec_extension(self, conn):
-        # Attempt to load extension if path provided
-        path = os.environ.get("RAGGEN_SQLITE_VEC_PATH")
+    # ---- sqlite-vec loading ----
+
+    def _ensure_vec_loaded(self, conn: Connection) -> None:
+        """
+        Ensure sqlite-vec is loaded for the *current sqlite3 connection*.
+
+        Uses the official python package if installed. This is the recommended path.
+        """
+        # Get the raw sqlite3 connection from SQLAlchemy
+        raw = getattr(conn.connection, "driver_connection",
+                      None) or conn.connection
+
         try:
-            if path:
-                conn.execute(f"SELECT load_extension('{path}')")
-            else:
-                # best-effort: try common names; some systems allow load_extension without path
-                conn.execute("SELECT load_extension('vec')")
-        except Exception:
-            # ignore here; supports() will handle capability checks
-            pass
+            import sqlite_vec  # type: ignore
+        except Exception as e:
+            raise RuntimeError(
+                "sqlite-vec backend selected but python package 'sqlite-vec' is not installed. "
+                "Install it (e.g. `pip install sqlite-vec`) or choose a different backend."
+            ) from e
+
+        # Load extension into this raw connection
+        try:
+            raw.enable_load_extension(True)
+            sqlite_vec.load(raw)
+        finally:
+            # lock it back down
+            try:
+                raw.enable_load_extension(False)
+            except Exception:
+                pass
+
+        # Sanity check: vec_version() should exist now
+        conn.exec_driver_sql("SELECT vec_version()").scalar_one()
 
     def supports(self, engine: Engine) -> bool:
-        # Only check dialect; availability of sqlite-vec extension is optional. We provide a fallback.
         return engine.dialect.name == "sqlite"
 
+    # ---- schema ----
+
     def create_schema(self, engine: Engine, dim: int) -> None:
-        # Try to create a vec virtual table; if that fails (extension not available), create a fallback table.
-        virtual_ddl = f"""
-        CREATE VIRTUAL TABLE IF NOT EXISTS chunk_vectors USING vec(embedding, dims={dim});
         """
-        fallback_ddl = f"""
-        CREATE TABLE IF NOT EXISTS chunk_vectors_flat (
-            chunk_id TEXT PRIMARY KEY,
-            embedding_json TEXT NOT NULL,
-            embedding_model_id TEXT NOT NULL,
-            normalized BOOLEAN NOT NULL,
-            created_at DATETIME DEFAULT (CURRENT_TIMESTAMP)
-        );
+        Creates:
+          - chunk_vectors_map: maps chunk_id (TEXT) -> id (INTEGER)
+          - chunk_vectors: sqlite-vec virtual table storing embedding at rowid = id
         """
+        if dim <= 0:
+            raise ValueError(f"dim must be > 0, got {dim}")
+
         with engine.begin() as conn:
-            try:
-                conn.execute(virtual_ddl)
-            except Exception:
-                # fallback table if vec extension unavailable
-                conn.execute(fallback_ddl)
+            self._ensure_vec_loaded(conn)
+
+            # Mapping table (normal SQLite table)
+            conn.exec_driver_sql(
+                """
+                CREATE TABLE IF NOT EXISTS chunk_vectors_map (
+                    id INTEGER PRIMARY KEY,
+                    chunk_id TEXT NOT NULL UNIQUE
+                )
+                """
+            )
+
+            # Vec virtual table (only embedding; rowid used as key)
+            conn.exec_driver_sql(
+                f"""
+                CREATE VIRTUAL TABLE IF NOT EXISTS chunk_vectors
+                USING vec0(embedding float[{dim}])
+                """
+            )
 
     def drop_schema(self, engine: Engine) -> None:
         with engine.begin() as conn:
-            # attempt both drops; virtual table drop may fail if not present
+            # drop vec virtual table first, then mapping
             try:
-                conn.execute("DROP TABLE IF EXISTS chunk_vectors")
+                conn.exec_driver_sql("DROP TABLE IF EXISTS chunk_vectors")
             except Exception:
                 pass
-            try:
-                conn.execute("DROP TABLE IF EXISTS chunk_vectors_flat")
-            except Exception:
-                pass
+            conn.exec_driver_sql("DROP TABLE IF EXISTS chunk_vectors_map")
+
+    # ---- upsert ----
 
     def upsert_vectors(
         self,
         engine_or_conn,
         *,
         vectors: List[Tuple[str, List[float]]],
-        embedding_model_id: str,
+        embedding_model_id: str,  # not used by sqlite-vec table; metadata lives elsewhere
         dim: int,
-        normalized: bool,
+        normalized: bool,         # not used here; metadata lives elsewhere
     ) -> None:
-        # validate dims
+        if not vectors:
+            return
+
         for cid, vec in vectors:
             if len(vec) != dim:
-                raise ValueError(f"Vector for {cid} has length {len(vec)} != {dim}")
+                raise ValueError(
+                    f"Vector for {cid} has length {len(vec)} != {dim}")
 
-        # Accept either a Connection or an Engine. If given an Engine, open a transaction; if given a Connection, use it.
-        from sqlalchemy.engine import Connection, Engine
+        def _do(conn: Connection) -> None:
+            self._ensure_vec_loaded(conn)
 
-        def _do_upsert(conn):
-            for cid, vec in vectors:
-                vec_str = "[" + ",".join(str(float(x)) for x in vec) + "]"
-                conn.execute(
-                    "INSERT OR REPLACE INTO chunk_vectors_flat (chunk_id, embedding_json, embedding_model_id, normalized) VALUES (:cid, :vec, :model, :norm)",
-                    {"cid": cid, "vec": vec_str, "model": embedding_model_id, "norm": normalized},
-                )
+            # Mapping table: safe to use ON CONFLICT (this is a normal table)
+            insert_map = text("""
+                INSERT INTO chunk_vectors_map (chunk_id)
+                VALUES (:chunk_id)
+                ON CONFLICT(chunk_id) DO NOTHING
+            """)
+
+            select_id = text("""
+                SELECT id
+                FROM chunk_vectors_map
+                WHERE chunk_id = :chunk_id
+            """)
+
+            # Virtual table: must do manual "upsert"
+            update_vec = text("""
+                UPDATE chunk_vectors
+                SET embedding = :embedding
+                WHERE rowid = :rowid
+            """)
+
+            insert_vec = text("""
+                INSERT INTO chunk_vectors(rowid, embedding)
+                VALUES (:rowid, :embedding)
+            """)
+
+            for chunk_id, vec in vectors:
+                # Ensure mapping exists
+                conn.execute(insert_map, {"chunk_id": chunk_id})
+                rowid = conn.execute(
+                    select_id, {"chunk_id": chunk_id}).scalar_one()
+                params = {"rowid": int(
+                    rowid), "embedding": _serialize_f32(vec)}
+
+                # Try update first
+                res = conn.execute(update_vec, params)
+
+                # If no row was updated, insert
+                # SQLAlchemy CursorResult.rowcount is supported here for sqlite
+                if res.rowcount == 0:
+                    conn.execute(insert_vec, params)
 
         if isinstance(engine_or_conn, Connection):
-            _do_upsert(engine_or_conn)
+            _do(engine_or_conn)
         elif isinstance(engine_or_conn, Engine):
             with engine_or_conn.begin() as conn:
-                _do_upsert(conn)
+                _do(conn)
         else:
-            # fallback: assume it has execute()
-            _do_upsert(engine_or_conn)
+            # fallback: assume it behaves like a Connection
+            _do(engine_or_conn)
+
+    # ---- delete ----
+
+    def delete_vectors(
+        self,
+        engine,
+        *,
+        chunks: List[str],
+    ) -> None:
+        if not chunks:
+            return
+
+        with engine.begin() as conn:
+            self._ensure_vec_loaded(conn)
+
+            # Get rowids for chunk_ids
+            ids_stmt = text(
+                """
+                SELECT id
+                FROM chunk_vectors_map
+                WHERE chunk_id IN :chunk_ids
+                """
+            ).bindparams(bindparam("chunk_ids", expanding=True))
+
+            rowids = list(conn.scalars(ids_stmt, {"chunk_ids": chunks}))
+            if rowids:
+                # Delete from vec table by rowid
+                del_vec = text(
+                    "DELETE FROM chunk_vectors WHERE rowid IN :rowids"
+                ).bindparams(bindparam("rowids", expanding=True))
+                conn.execute(del_vec, {"rowids": rowids})
+
+            # Delete mapping rows
+            del_map = text(
+                "DELETE FROM chunk_vectors_map WHERE chunk_id IN :chunk_ids"
+            ).bindparams(bindparam("chunk_ids", expanding=True))
+            conn.execute(del_map, {"chunk_ids": chunks})

@@ -10,7 +10,8 @@ from raggen.core.parsing.PlainTextParser import PlainTextFallbackParser
 from raggen.core.chunking.chunks import DEFAULT_CHUNK_CONFIG
 from raggen.core.chunking.chunker import Chunker
 from raggen.core.embeddings.embedder import LocalSentenceTransformerEmbedder, embed_chunks
-from raggen.core.store import RagInitConfig, init_database, store_document_bundle
+from raggen.core.store import RagInitConfig, init_database, store_document_bundle, delete_documents
+from raggen.core.store.metadata_store import fetch_all_document_ids
 from raggen.core.scanner import scan_files
 import os
 from datetime import datetime
@@ -70,7 +71,10 @@ def init_and_ingest(*, cfg: ProjectConfig, destructive_init: bool = False) -> Di
     for k, v in initial_warnings.items():
         warnings_agg[k] = warnings_agg.get(k, 0) + v
 
+    current_files = set()
+    db_files = set(fetch_all_document_ids(engine))
     for fr in scan_files(root):  # TODO: add proper ignorefile and other config
+        current_files.add(fr.relative_path)
         # gating: raw bytes
         if not should_ingest_changed_file(fr, cfg):
             logger.warning("Skipping %s: file already ingested and unchanged",
@@ -167,13 +171,16 @@ def init_and_ingest(*, cfg: ProjectConfig, destructive_init: bool = False) -> Di
             errors.append({'path': str(fr.path), 'error': str(exc)})
     log_stage('ingest_done', {'docs': doc_count,
               'chunks': chunk_count, 'embeddings': emb_count})
-    # compute skipped/docs parsed
+    # compute skipped/docs parsed/docs deleted
     docs_skipped = sum(warnings_agg.values())
+    docs_to_remove = db_files - current_files
+    n_removed = delete_documents(engine=engine, cfg=cfg,
+                                 vector_backend=backend, documents=docs_to_remove)
     result = {
-        # 'files_scanned': files_scanned,
         'docs_parsed': doc_count,
         'docs_skipped': docs_skipped,
         'skip_reasons': warnings_agg,
+        'docs_removed': n_removed,
         'docs': doc_count,
         'chunks': chunk_count,
         'embeddings': emb_count,

@@ -20,7 +20,8 @@ def store_document_bundle(
     """Persist document, chunks, embedding meta, and vectors transactionally."""
     # basic validations
     if any(len(vec) != cfg.embedding_dim for _, vec in embeddings):
-        bad = [(cid, len(vec)) for cid, vec in embeddings if len(vec) != cfg.embedding_dim]
+        bad = [(cid, len(vec))
+               for cid, vec in embeddings if len(vec) != cfg.embedding_dim]
         raise ValueError(f"Embedding dimension mismatch for vectors: {bad}")
     # ensure chunk ids referenced exist among chunk_rows
     chunk_ids = {r["chunk_id"] for r in chunk_rows}
@@ -37,4 +38,25 @@ def store_document_bundle(
         store.upsert_embedding_meta(conn, embedding_meta_rows)
         # call vector backend - backends expect Engine or Connection; prefer conn if supported
         # Let backend accept either a Connection or Engine. Prefer passing the connection to avoid nested transactions.
-        vector_backend.upsert_vectors(conn, vectors=embeddings, embedding_model_id=cfg.embedding_model_id, dim=cfg.embedding_dim, normalized=cfg.embedding_normalized)
+        vector_backend.upsert_vectors(conn, vectors=embeddings, embedding_model_id=cfg.embedding_model_id,
+                                      dim=cfg.embedding_dim, normalized=cfg.embedding_normalized)
+
+
+def delete_documents(
+        *,
+        engine: Engine,
+        cfg: RagInitConfig,
+        vector_backend: VectorBackend,
+        documents: List[str],
+) -> int:
+    """Delete documents and all related MetaData/vectors, returns n docs removed"""
+    if not documents:
+        return 0
+
+    store = MetadataStore(engine)
+
+    with engine.begin() as conn:
+        chunk_ids = store.fetch_all_chunk_ids(conn, documents)
+        vector_backend.delete_vectors(engine, chunks=chunk_ids)
+        store.delete_documents(conn, documents)
+    return len(documents)

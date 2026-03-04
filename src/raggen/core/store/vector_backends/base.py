@@ -31,3 +31,7 @@ class VectorBackend(ABC):
         normalized: bool,
     ) -> None:
         """Insert/replace vectors keyed by chunk_id."""
+
+    @abstractmethod
+    def delete_vectors(self, engine: Engine, *, chunks: List[str]) -> None:
+        """Delete vectors by chunk_id"""
