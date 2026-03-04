@@ -4,7 +4,7 @@ from pathlib import Path
 from typing import Dict, Any
 from raggen.core.ingest.config import ProjectConfig
 from raggen.core.ingest.logging import log_stage, log_error, logger
-from raggen.core.ingest.gating import should_ingest_raw_bytes, should_ingest_parsed_document
+from raggen.core.ingest.gating import should_ingest_raw_bytes, should_ingest_parsed_document, should_ingest_changed_file
 from raggen.core.parsing.parser import ParserRegistry, ParseInput, ParserService
 from raggen.core.parsing.PlainTextParser import PlainTextFallbackParser
 from raggen.core.chunking.chunks import DEFAULT_CHUNK_CONFIG
@@ -72,6 +72,11 @@ def init_and_ingest(*, cfg: ProjectConfig, destructive_init: bool = False) -> Di
 
     for fr in scan_files(root):  # TODO: add proper ignorefile and other config
         # gating: raw bytes
+        if not should_ingest_changed_file(fr, cfg):
+            logger.warning("Skipping %s: file already ingested and unchanged",
+                           fr.relative_path)
+            warnings_agg['unchanged'] = warnings_agg.get('unchanged', 0) + 1
+            continue
         try:
             data = Path(fr.path).read_bytes()
         except Exception:
