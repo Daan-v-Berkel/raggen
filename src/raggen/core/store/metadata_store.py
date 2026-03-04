@@ -3,7 +3,6 @@ from __future__ import annotations
 from typing import List, Dict, Any
 from sqlalchemy.engine import Engine, Connection
 from .metadata_schema import documents, chunks, embeddings
-from sqlalchemy import insert, text
 
 
 class MetadataStore:
@@ -11,17 +10,17 @@ class MetadataStore:
         self.engine = engine
 
     def upsert_document(self, conn: Connection, row: Dict[str, Any]) -> None:
-        upsert_rows(conn, documents, [row], ["doc_id"]) 
+        upsert_rows(conn, documents, [row], ["doc_id"])
 
     def upsert_chunks(self, conn: Connection, rows: List[Dict[str, Any]]) -> None:
         if not rows:
             return
-        upsert_rows(conn, chunks, rows, ["chunk_id"]) 
+        upsert_rows(conn, chunks, rows, ["chunk_id"])
 
     def upsert_embedding_meta(self, conn: Connection, rows: List[Dict[str, Any]]) -> None:
         if not rows:
             return
-        upsert_rows(conn, embeddings, rows, ["chunk_id"]) 
+        upsert_rows(conn, embeddings, rows, ["chunk_id"])
 
 
 def upsert_rows(conn: Connection, table, rows: List[Dict[str, Any]], pk_cols: List[str]) -> None:

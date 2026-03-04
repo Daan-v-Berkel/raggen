@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import dataclasses
 import fnmatch
 import hashlib
 import mimetypes
@@ -15,7 +14,7 @@ class FileRef:
     path: str           # absolute path
     relative_path: str  # relative to root, posix-style
     file_size: int
-    mtime: float
+    mtime: int
     content_hash: str   # sha256 hex digest
     mime_type: str
 
@@ -206,18 +205,7 @@ def scan_files(
                 path=str(p),
                 relative_path=rel,
                 file_size=int(st.st_size),
-                mtime=float(st.st_mtime),
+                mtime=int(st.st_mtime),
                 content_hash=_sha256_file(p),
                 mime_type=_guess_mime_type(p),
             )
-
-
-# if __name__ == "__main__":
-#     # tiny manual test / demo:
-#     import json
-#     import sys
-#
-#     root = Path(sys.argv[1] if len(sys.argv) > 1 else ".").resolve()
-#     ignore = Path(sys.argv[2] if len(sys.argv) > 2 else ".gitignore").resolve()
-#     for ref in scan_files(root, ignore_filename=ignore):
-#         print(json.dumps(dataclasses.asdict(ref), ensure_ascii=False))

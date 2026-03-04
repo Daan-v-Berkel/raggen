@@ -1,6 +1,5 @@
 import types
 import sys
-from pathlib import Path
 import pytest
 from sqlalchemy import select
 
@@ -9,8 +8,6 @@ from raggen.core.store.initializer import init_database
 from raggen.core.store.metadata_store import MetadataStore
 from raggen.core.store.ingest_store import store_document_bundle
 from raggen.core.store.metadata_schema import documents, chunks, embeddings
-from raggen.core.store.plugin_loader import load_vector_backend
-from raggen.core.store.engine import create_engine_from_url
 
 
 class DummyInitBackend:
@@ -56,6 +53,7 @@ def test_metadata_store_upserts_sqlite(tmp_path):
         "doc_id": "d1",
         "source_path": "p",
         "mimetype": "text/plain",
+        "mtime_ns": 10,
         "byte_size": 10,
         "content_hash": "h",
         "parsed_at": "t",
@@ -155,6 +153,7 @@ def test_store_document_bundle_transactionality(tmp_path):
         "doc_id": "dtx",
         "source_path": "p",
         "mimetype": "text/plain",
+        "mtime_ns": 10,
         "byte_size": 10,
         "content_hash": "h",
         "parsed_at": "t",
@@ -178,13 +177,15 @@ def test_store_document_bundle_transactionality(tmp_path):
     ]
     embeddings = [("ct1", [0.1, 0.2])]
     embedding_meta_rows = [
-        {"chunk_id": "ct1", "embedding_model_id": "m", "dim": 2, "normalized": 1, "created_at": "t"}
+        {"chunk_id": "ct1", "embedding_model_id": "m",
+            "dim": 2, "normalized": 1, "created_at": "t"}
     ]
 
     # use raising backend
     bad = RaisingBackend()
     with pytest.raises(RuntimeError):
-        store_document_bundle(engine=engine, cfg=cfg, vector_backend=bad, document_row=document_row, chunk_rows=chunk_rows, embeddings=embeddings, embedding_meta_rows=embedding_meta_rows)
+        store_document_bundle(engine=engine, cfg=cfg, vector_backend=bad, document_row=document_row,
+                              chunk_rows=chunk_rows, embeddings=embeddings, embedding_meta_rows=embedding_meta_rows)
 
     with engine.connect() as conn:
         r = conn.execute(select(documents)).mappings().fetchone()
@@ -192,7 +193,8 @@ def test_store_document_bundle_transactionality(tmp_path):
 
     # now with good backend
     good = GoodBackend()
-    store_document_bundle(engine=engine, cfg=cfg, vector_backend=good, document_row=document_row, chunk_rows=chunk_rows, embeddings=embeddings, embedding_meta_rows=embedding_meta_rows)
+    store_document_bundle(engine=engine, cfg=cfg, vector_backend=good, document_row=document_row,
+                          chunk_rows=chunk_rows, embeddings=embeddings, embedding_meta_rows=embedding_meta_rows)
 
     with engine.connect() as conn:
         r = conn.execute(select(documents)).mappings().fetchone()

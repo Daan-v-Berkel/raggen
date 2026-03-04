@@ -39,6 +39,7 @@ documents = Table(
     Column("byte_size", Integer, nullable=False),
     Column("content_hash", Text, nullable=False),
     Column("parsed_at", Text, nullable=False),
+    Column("mtime_ns", Integer, nullable=False),
     Column("parser_id", Text, nullable=False),
     Column("structure_version", Text, nullable=False),
     Column("text_char_len", Integer, nullable=False),
@@ -48,7 +49,8 @@ chunks = Table(
     "chunks",
     metadata,
     Column("chunk_id", Text, primary_key=True),
-    Column("doc_id", Text, ForeignKey("documents.doc_id", ondelete="CASCADE"), nullable=False),
+    Column("doc_id", Text, ForeignKey(
+        "documents.doc_id", ondelete="CASCADE"), nullable=False),
     Column("chunk_index", Integer, nullable=False),
     Column("text", Text, nullable=False),
     Column("start_offset", Integer, nullable=False),
@@ -64,7 +66,8 @@ Index("chunks_doc_order_idx", chunks.c.doc_id, chunks.c.chunk_index)
 embeddings = Table(
     "embeddings",
     metadata,
-    Column("chunk_id", Text, ForeignKey("chunks.chunk_id", ondelete="CASCADE"), primary_key=True),
+    Column("chunk_id", Text, ForeignKey(
+        "chunks.chunk_id", ondelete="CASCADE"), primary_key=True),
     Column("embedding_model_id", Text, nullable=False),
     Column("dim", Integer, nullable=False),
     Column("normalized", Integer, nullable=False),
