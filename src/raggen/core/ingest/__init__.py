@@ -1,9 +1,8 @@
-from .ingest_service import init_and_ingest, ingest_only
+from .ingest_service import do_ingest
 from .logging import log_stage, log_error
 
 __all__ = [
-    "init_and_ingest",
-    "ingest_only",
+    "do_ingest",
     "log_stage",
     "log_error",
 ]

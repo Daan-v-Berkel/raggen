@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 import os
 from raggen.core.config.project import default_project_config
-from raggen.core.ingest.ingest_service import init_and_ingest
+from raggen.core.ingest.ingest_service import do_ingest
 
 
 def run_init(
@@ -31,7 +31,7 @@ def run_init(
         shutil.rmtree(root_p / '.rag')
 
     # ensure .rag exists
-    os.makedirs(root_p / '.rag', exist_ok=True)
+    os.makedirs(root_p / '.rag', exist_ok=False)
 
     if non_interactive:
         cfg.save(cfg_path)
@@ -80,7 +80,7 @@ def run_init(
     confirm = input(
         "Initialize DB and ingest now? (y/n) [n]: ").strip().lower() or 'n'
     if confirm.startswith('y'):
-        stats = init_and_ingest(cfg=cfg, destructive_init=False)
+        stats = do_ingest(cfg=cfg, destructive_init=False)
         print("Ingest completed:", stats)
     else:
         print("Done. Run `rag ingest` to perform ingestion later.")

@@ -13,17 +13,13 @@ from raggen.core.embeddings.embedder import LocalSentenceTransformerEmbedder, em
 from raggen.core.store import init_database, store_document_bundle, delete_documents
 from raggen.core.store.metadata_store import fetch_all_document_ids
 from raggen.core.scanner import scan_files
-import os
 from datetime import datetime
 
 
-def init_and_ingest(*, cfg: ProjectConfig, destructive_init: bool = False) -> Dict[str, Any]:
-    root = Path(cfg.project_root)
-    root.mkdir(parents=True, exist_ok=True)
-    os.makedirs(root / '.rag', exist_ok=True)
+def do_ingest(destructive: bool = False) -> Dict[str, Any]:
     # init db
-    # rag_cfg = _build_rag_init_config(cfg)
-    engine = init_database(cfg, destructive=destructive_init)
+    cfg = ProjectConfig.get_config()
+    engine = init_database(cfg, destructive=destructive)
     backend = getattr(engine, '_rag_vector_backend', None)
     # scan using scanner
     initial_warnings = {"empty_bytes": 0}
@@ -42,7 +38,8 @@ def init_and_ingest(*, cfg: ProjectConfig, destructive_init: bool = False) -> Di
 
     current_files = set()
     db_files = set(fetch_all_document_ids(engine))
-    for fr in scan_files(root):  # TODO: add proper ignorefile and other config
+    # TODO: add proper ignorefile and other config
+    for fr in scan_files(cfg.project_root):
         current_files.add(fr.relative_path)
         # gating: raw bytes
         if not should_ingest_changed_file(fr, cfg):
@@ -156,7 +153,3 @@ def init_and_ingest(*, cfg: ProjectConfig, destructive_init: bool = False) -> Di
         'errors': errors,
     }
     return result
-
-
-def ingest_only(*, cfg: ProjectConfig) -> Dict[str, Any]:
-    return init_and_ingest(cfg=cfg, destructive_init=False)

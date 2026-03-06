@@ -15,6 +15,7 @@ def main(argv=None):
 
     ingest_p = sub.add_parser("ingest")
     ingest_p.add_argument("--config", default=".rag/config.toml")
+    ingest_p.add_argument("--destructive", action="store_true")
 
     args = parser.parse_args(argv)
 
@@ -22,7 +23,8 @@ def main(argv=None):
         init_cmd.run_init(
             root=args.root, non_interactive=args.non_interactive, force=args.force)
     elif args.command == "ingest":
-        ingest_cmd.run_ingest(config_path=args.config)
+        ingest_cmd.run_ingest(config_path=args.config,
+                              destructive=args.destructive)
     else:
         parser.print_help()
 
