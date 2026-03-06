@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 import os
-from raggen.core.ingest.config import ProjectConfig, default_project_config
+from raggen.core.config.project import default_project_config
 from raggen.core.ingest.ingest_service import init_and_ingest
 
 

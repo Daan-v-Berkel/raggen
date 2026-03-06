@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import List, Dict, Any, Tuple
 from sqlalchemy.engine import Engine
-from raggen.core.ingest.config import ProjectConfig
+from raggen.core.config.project import ProjectConfig
 from .vector_backends.base import VectorBackend
 from .metadata_store import MetadataStore
 

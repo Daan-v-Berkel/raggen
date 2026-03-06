@@ -1,7 +1,3 @@
-from pathlib import Path
-import sys
-import os
-import shutil
 import pytest
 
 from raggen.cli.commands.init import run_init

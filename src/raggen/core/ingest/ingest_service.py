@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 from typing import Dict, Any
-from raggen.core.ingest.config import ProjectConfig
+from raggen.core.config.project import ProjectConfig
 from raggen.core.ingest.logging import log_stage, log_error, logger
 from raggen.core.ingest.gating import should_ingest_raw_bytes, should_ingest_parsed_document, should_ingest_changed_file
 from raggen.core.parsing.parser import ParserRegistry, ParseInput, ParserService

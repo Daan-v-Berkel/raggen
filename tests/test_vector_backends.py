@@ -2,7 +2,7 @@ import types
 
 from raggen.core.store.plugin_loader import load_vector_backend
 from raggen.core.store.initializer import init_database
-from raggen.core.ingest.config import default_project_config
+from raggen.core.config.project import default_project_config
 
 
 class DummyBackend:

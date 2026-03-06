@@ -3,7 +3,7 @@ from __future__ import annotations
 from sqlalchemy import select
 from sqlalchemy.engine import Engine
 
-from raggen.core.ingest.config import ProjectConfig
+from raggen.core.config.project import ProjectConfig
 from .engine import create_engine_from_url
 from .metadata_schema import metadata, rag_project
 from .exceptions import SchemaMismatchError, BackendLoadError, BackendNotSupportedError

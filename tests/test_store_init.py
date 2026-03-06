@@ -3,7 +3,7 @@ import pytest
 from sqlalchemy import inspect
 
 from raggen.core.store import init_database, SchemaMismatchError
-from raggen.core.ingest.config import default_project_config
+from raggen.core.config.project import default_project_config
 
 
 def make_cfg(tmp_path, db_path: Path, **kwargs):

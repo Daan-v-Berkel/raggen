@@ -2,7 +2,7 @@ from types import SimpleNamespace
 import numpy as np
 
 from raggen.core.ingest.ingest_service import init_and_ingest
-from raggen.core.ingest.config import default_project_config
+from raggen.core.config.project import default_project_config
 from raggen.core.parsing.parser import ParserService
 from raggen.core.chunking.chunker import Chunker
 

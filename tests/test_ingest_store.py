@@ -3,7 +3,7 @@ import sys
 import pytest
 from sqlalchemy import select
 
-from raggen.core.ingest.config import default_project_config
+from raggen.core.config.project import default_project_config
 from raggen.core.store.initializer import init_database
 from raggen.core.store.metadata_store import MetadataStore
 from raggen.core.store.ingest_store import store_document_bundle

@@ -1,4 +1,4 @@
-from raggen.core.ingest.config import ProjectConfig
+from raggen.core.config.project import ProjectConfig
 from raggen.cli.commands.init import run_init
 
 

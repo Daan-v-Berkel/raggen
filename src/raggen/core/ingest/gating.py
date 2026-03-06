@@ -5,7 +5,7 @@ from typing import Tuple, Optional
 from raggen.core.store.metadata_schema import documents
 from raggen.core.scanner import FileRef
 from raggen.core.store.engine import create_engine_from_url
-from raggen.core.ingest.config import ProjectConfig
+from raggen.core.config.project import ProjectConfig
 
 
 def should_ingest_raw_bytes(data: bytes) -> Tuple[bool, Optional[str]]:
