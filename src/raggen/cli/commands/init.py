@@ -44,7 +44,7 @@ def run_init(
         "ignorefiles to use (comma separated) [.gitignore]: ").strip().lower() or '.gitignore'
     if use_ignorefiles != '':  # TODO:more robust checking and make optional
         ignorefiles = use_ignorefiles.split(',')
-        cfg.scan.ignorefiles = ignorefiles
+        cfg.scan.ignore_files = ignorefiles
     extra = input("Additional ignore globs (comma-separated) []: ").strip()
     if extra:
         cfg.scan.ignore = [s.strip() for s in extra.split(',') if s.strip()]
