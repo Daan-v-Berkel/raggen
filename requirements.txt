@@ -4,6 +4,7 @@ anyio==4.12.1
 certifi==2026.2.25
 charset-normalizer==3.4.4
 click==8.3.1
+fancy-dataclass==0.10.2
 filelock==3.25.0
 fsspec==2026.2.0
 h11==0.16.0
@@ -53,6 +54,7 @@ sympy==1.14.0
 tenacity==9.1.4
 threadpoolctl==3.6.0
 tokenizers==0.22.2
+tomlkit==0.14.0
 torch==2.10.0
 tqdm==4.67.3
 transformers==5.2.0

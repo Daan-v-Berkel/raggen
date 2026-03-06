@@ -158,6 +158,7 @@ def scan_files(
     """
     Recursively scan from root_dir and yield FileRef for each file encountered,
     respecting ignore rules from <root_dir>/<ignore_filename>.
+    And always ingoring it's own directory (.rag/).
 
     ignore rules apply to *relative paths* under root_dir.
     """
@@ -174,6 +175,8 @@ def scan_files(
         # prune dirs based on ignore rules
         kept_dirnames: list[str] = []
         for dn in dirnames:
+            if dn == '.rag':
+                continue
             if not include_hidden and dn.startswith("."):
                 continue
             rel = f"{rel_dir}/{dn}" if rel_dir else dn

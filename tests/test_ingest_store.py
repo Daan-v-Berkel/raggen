@@ -3,7 +3,7 @@ import sys
 import pytest
 from sqlalchemy import select
 
-from raggen.core.store.init_config import RagInitConfig
+from raggen.core.ingest.config import default_project_config
 from raggen.core.store.initializer import init_database
 from raggen.core.store.metadata_store import MetadataStore
 from raggen.core.store.ingest_store import store_document_bundle
@@ -38,14 +38,15 @@ def _inject_dummy_module(name="tests._dummy_init_mod"):
 def test_metadata_store_upserts_sqlite(tmp_path):
     db_file = tmp_path / "rag.db"
     import_path = _inject_dummy_module()
-    cfg = RagInitConfig(
-        database_url=f"sqlite:///{db_file}",
-        backend_key="dummy_init",
-        vector_backend_import=import_path,
-        embedding_model_id="m",
-        embedding_dim=3,
-        embedding_normalized=True,
-    )
+    cfg = default_project_config(tmp_path)
+
+    cfg.storage.database_url = f"sqlite:///{db_file.resolve().as_posix()}"
+    cfg.storage.backend_key = "dummy_init"
+    cfg.storage.vector_backend_import = import_path
+    cfg.embedding.model_id = "m"
+    cfg.embedding.dim = 3
+    cfg.embedding.normalize = True
+
     engine = init_database(cfg)
     ms = MetadataStore(engine)
 
@@ -139,14 +140,14 @@ class GoodBackend(RaisingBackend):
 def test_store_document_bundle_transactionality(tmp_path):
     db_file = tmp_path / "rag.db"
     import_path = _inject_dummy_module()
-    cfg = RagInitConfig(
-        database_url=f"sqlite:///{db_file}",
-        backend_key="dummy_init",
-        vector_backend_import=import_path,
-        embedding_model_id="m",
-        embedding_dim=2,
-        embedding_normalized=True,
-    )
+    cfg = default_project_config(tmp_path)
+
+    cfg.storage.database_url = f"sqlite:///{db_file.resolve().as_posix()}"
+    cfg.storage.backend_key = "dummy_init"
+    cfg.storage.vector_backend_import = import_path
+    cfg.embedding.model_id = "m"
+    cfg.embedding.dim = 3
+    cfg.embedding.normalize = True
     engine = init_database(cfg)
 
     document_row = {
@@ -175,10 +176,10 @@ def test_store_document_bundle_transactionality(tmp_path):
             "created_at": "t",
         }
     ]
-    embeddings = [("ct1", [0.1, 0.2])]
+    embeddings = [("ct1", [0.1, 0.2, 0.3])]
     embedding_meta_rows = [
         {"chunk_id": "ct1", "embedding_model_id": "m",
-            "dim": 2, "normalized": 1, "created_at": "t"}
+            "dim": 3, "normalized": 1, "created_at": "t"}
     ]
 
     # use raising backend

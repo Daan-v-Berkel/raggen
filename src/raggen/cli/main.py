@@ -5,7 +5,7 @@ from .commands import init as init_cmd, ingest as ingest_cmd
 
 
 def main(argv=None):
-    parser = argparse.ArgumentParser(prog="rag")
+    parser = argparse.ArgumentParser(prog="raggen")
     sub = parser.add_subparsers(dest="command")
 
     init_p = sub.add_parser("init")
@@ -19,7 +19,8 @@ def main(argv=None):
     args = parser.parse_args(argv)
 
     if args.command == "init":
-        init_cmd.run_init(root=args.root, non_interactive=args.non_interactive, force=args.force)
+        init_cmd.run_init(
+            root=args.root, non_interactive=args.non_interactive, force=args.force)
     elif args.command == "ingest":
         ingest_cmd.run_ingest(config_path=args.config)
     else:

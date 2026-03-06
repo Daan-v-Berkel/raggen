@@ -10,42 +10,11 @@ from raggen.core.parsing.PlainTextParser import PlainTextFallbackParser
 from raggen.core.chunking.chunks import DEFAULT_CHUNK_CONFIG
 from raggen.core.chunking.chunker import Chunker
 from raggen.core.embeddings.embedder import LocalSentenceTransformerEmbedder, embed_chunks
-from raggen.core.store import RagInitConfig, init_database, store_document_bundle, delete_documents
+from raggen.core.store import init_database, store_document_bundle, delete_documents
 from raggen.core.store.metadata_store import fetch_all_document_ids
 from raggen.core.scanner import scan_files
 import os
 from datetime import datetime
-
-
-def _stable_chunk_config_hash(chunk_cfg) -> str:
-    import hashlib
-    import json
-    # chunk_cfg may be a dataclass or a Pydantic model; try to obtain a dict
-    try:
-        cfg_dict = chunk_cfg.__dict__
-    except Exception:
-        try:
-            cfg_dict = chunk_cfg.model_dump()
-        except Exception:
-            # fallback: str repr
-            cfg_dict = str(chunk_cfg)
-    js = json.dumps(cfg_dict, sort_keys=True, ensure_ascii=False)
-    return hashlib.sha256(js.encode("utf-8")).hexdigest()
-
-
-def _build_rag_init_config(cfg: ProjectConfig) -> RagInitConfig:
-    notes = {"vector_backend_import": cfg.storage.vector_backend_import}
-    chunk_hash = _stable_chunk_config_hash(cfg.chunking)
-    return RagInitConfig(
-        backend_key=cfg.storage.backend_key,
-        vector_backend_import=cfg.storage.vector_backend_import,
-        database_url=cfg.storage.database_url,
-        embedding_model_id=cfg.embedding.model_id,
-        embedding_dim=cfg.embedding.dim,
-        embedding_normalized=cfg.embedding.normalize,
-        chunk_config_hash=chunk_hash,
-        notes=notes,
-    )
 
 
 def init_and_ingest(*, cfg: ProjectConfig, destructive_init: bool = False) -> Dict[str, Any]:
@@ -53,8 +22,8 @@ def init_and_ingest(*, cfg: ProjectConfig, destructive_init: bool = False) -> Di
     root.mkdir(parents=True, exist_ok=True)
     os.makedirs(root / '.rag', exist_ok=True)
     # init db
-    rag_cfg = _build_rag_init_config(cfg)
-    engine = init_database(rag_cfg, destructive=destructive_init)
+    # rag_cfg = _build_rag_init_config(cfg)
+    engine = init_database(cfg, destructive=destructive_init)
     backend = getattr(engine, '_rag_vector_backend', None)
     # scan using scanner
     initial_warnings = {"empty_bytes": 0}
@@ -156,7 +125,7 @@ def init_and_ingest(*, cfg: ProjectConfig, destructive_init: bool = False) -> Di
             # store
             store_document_bundle(
                 engine=engine,
-                cfg=rag_cfg,
+                cfg=cfg,
                 vector_backend=backend,
                 document_row=document_row,
                 chunk_rows=chunk_rows,
@@ -174,7 +143,7 @@ def init_and_ingest(*, cfg: ProjectConfig, destructive_init: bool = False) -> Di
     # compute skipped/docs parsed/docs deleted
     docs_skipped = sum(warnings_agg.values())
     docs_to_remove = db_files - current_files
-    n_removed = delete_documents(engine=engine, cfg=cfg,
+    n_removed = delete_documents(engine=engine,
                                  vector_backend=backend, documents=docs_to_remove)
     result = {
         'docs_parsed': doc_count,

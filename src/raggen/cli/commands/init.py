@@ -2,18 +2,25 @@ from __future__ import annotations
 
 from pathlib import Path
 import os
-from ...core.ingest.config import ProjectConfig, save_project_config, default_project_config
-from ...core.ingest.ingest_service import init_and_ingest
+from raggen.core.ingest.config import ProjectConfig, default_project_config
+from raggen.core.ingest.ingest_service import init_and_ingest
 
 
-def run_init(*, root: str = '.', non_interactive: bool = False, force: bool = False, destructive: bool = False) -> None:
+def run_init(
+        *,
+        root: str = '.',
+        non_interactive: bool = False,
+        force: bool = False,
+        destructive: bool = False
+) -> None:
     root_p = Path(root).resolve()
     cfg = default_project_config(root_p)
     cfg_path = root_p / '.rag' / 'config.toml'
 
     # Guardrail: refuse to overwrite existing config unless --force is used
     if cfg_path.exists() and not force:
-        print("Project already initialised.\nUse --force to overwrite existing configuration.")
+        print(
+            "Project already initialised.\nUse --force to overwrite existing configuration.")
         raise SystemExit(1)
 
     # If force requested and .rag exists, remove it entirely
@@ -27,7 +34,7 @@ def run_init(*, root: str = '.', non_interactive: bool = False, force: bool = Fa
     os.makedirs(root_p / '.rag', exist_ok=True)
 
     if non_interactive:
-        save_project_config(cfg, cfg_path)
+        cfg.save(cfg_path)
         print(f"Wrote config to {cfg_path}")
         return
 
@@ -67,7 +74,7 @@ def run_init(*, root: str = '.', non_interactive: bool = False, force: bool = Fa
     if vbi:
         cfg.storage.vector_backend_import = vbi
 
-    save_project_config(cfg, cfg_path)
+    cfg.save(cfg_path)
     print(f"Wrote config to {cfg_path}")
 
     confirm = input(

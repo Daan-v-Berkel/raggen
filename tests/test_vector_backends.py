@@ -1,14 +1,8 @@
-import importlib
 import types
-import json
-from pathlib import Path
-import pytest
-from sqlalchemy import inspect
-from sqlalchemy import create_engine
 
-from raggen.core.store.plugin_loader import load_object, load_vector_backend
-from raggen.core.store.init_config import RagInitConfig
+from raggen.core.store.plugin_loader import load_vector_backend
 from raggen.core.store.initializer import init_database
+from raggen.core.ingest.config import default_project_config
 
 
 class DummyBackend:
@@ -46,16 +40,18 @@ def test_load_vector_backend_import_path_success(tmp_path, monkeypatch):
 
 def test_initializer_calls_backend_create_schema(tmp_path, monkeypatch):
     db_file = tmp_path / "rag.db"
-    cfg = RagInitConfig(
-        database_url=f"sqlite:///{db_file}",
-        embedding_model_id="x",
-        embedding_dim=42,
-        embedding_normalized=True,
-        backend_key="dummy",
-        vector_backend_import="tests._dummy_mod:DummyBackend",
-    )
+    cfg = default_project_config(tmp_path)
+
+    cfg.storage.database_url = f"sqlite:///{db_file.resolve().as_posix()}"
+    cfg.storage.backend_key = "dummy"
+    cfg.storage.vector_backend_import = "tests._dummy_mod:DummyBackend"
+    cfg.embedding.model_id = "x"
+    cfg.embedding.dim = 42
+    cfg.embedding.normalize = True
+
     # ensure our DummyBackend module is available
-    import types, sys
+    import types
+    import sys
     mod = types.ModuleType("tests._dummy_mod")
     mod.DummyBackend = DummyBackend
     sys.modules["tests._dummy_mod"] = mod
@@ -67,15 +63,17 @@ def test_initializer_calls_backend_create_schema(tmp_path, monkeypatch):
 
 def test_destructive_reinit_calls_drop_schema(tmp_path):
     db_file = tmp_path / "rag.db"
-    cfg = RagInitConfig(
-        database_url=f"sqlite:///{db_file}",
-        embedding_model_id="x",
-        embedding_dim=16,
-        embedding_normalized=True,
-        backend_key="dummy",
-        vector_backend_import="tests._dummy_mod:DummyBackend",
-    )
-    import types, sys
+    cfg = default_project_config(tmp_path)
+
+    cfg.storage.database_url = f"sqlite:///{db_file.resolve().as_posix()}"
+    cfg.storage.backend_key = "dummy"
+    cfg.storage.vector_backend_import = "tests._dummy_mod:DummyBackend"
+    cfg.embedding.model_id = "x"
+    cfg.embedding.dim = 16
+    cfg.embedding.normalize = True
+
+    import types
+    import sys
     mod = types.ModuleType("tests._dummy_mod")
     mod.DummyBackend = DummyBackend
     sys.modules["tests._dummy_mod"] = mod

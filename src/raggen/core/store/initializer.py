@@ -3,7 +3,7 @@ from __future__ import annotations
 from sqlalchemy import select
 from sqlalchemy.engine import Engine
 
-from .init_config import RagInitConfig
+from raggen.core.ingest.config import ProjectConfig
 from .engine import create_engine_from_url
 from .metadata_schema import metadata, rag_project
 from .exceptions import SchemaMismatchError, BackendLoadError, BackendNotSupportedError
@@ -11,34 +11,47 @@ from .plugin_loader import load_vector_backend
 import json
 
 
-def _row_to_config(row) -> dict:
+def _row_to_config(row) -> ProjectConfig:
     # row is a RowMapping; convert to normal dict
-    return dict(row)
+    return ProjectConfig.from_dict(dict(row))
 
 
-def _compare_configs(stored: dict, cfg: RagInitConfig) -> dict:
+def _get_attr_path(obj, path: str):
+    value = obj
+    for part in path.split("."):
+        value = getattr(value, part)
+    return value
+
+
+def _compare_configs(stored: dict, cfg: ProjectConfig) -> dict:
     diffs = {}
     checks = [
         ("schema_version", "schema_version"),
-        ("backend_key", "backend_key"),
-        ("embedding_model_id", "embedding_model_id"),
-        ("embedding_dim", "embedding_dim"),
-        ("embedding_normalized", "embedding_normalized"),
-        ("query_model_id", "query_model_id"),
-        ("chunk_config_hash", "chunk_config_hash"),
+        ("backend_key", "storage.backend_key"),
+        ("embedding_model_id", "embedding.model_id"),
+        ("embedding_dim", "embedding.dim"),
+        ("embedding_normalized", "embedding.normalize"),
+        ("query_model_id", "query.model_id"),
     ]
-    for stored_k, cfg_k in checks:
+
+    for stored_k, cfg_path in checks:
         stored_val = stored.get(stored_k)
-        cfg_val = getattr(cfg, cfg_k)
-        # normalize numeric/bool
+        cfg_val = _get_attr_path(cfg, cfg_path)
+
+        # normalize bool to match DB integer storage
         if isinstance(cfg_val, bool):
             cfg_val = 1 if cfg_val else 0
+
         if stored_val != cfg_val:
-            diffs[stored_k] = {"stored": stored_val, "expected": cfg_val}
+            diffs[stored_k] = {
+                "stored": stored_val,
+                "expected": cfg_val,
+            }
+
     return diffs
 
 
-def validate_existing_project(engine: Engine, cfg: RagInitConfig) -> None:
+def validate_existing_project(engine: Engine, cfg: ProjectConfig) -> None:
     conn = engine.connect()
     sel = select(rag_project).where(rag_project.c.id == 1)
     res = conn.execute(sel).mappings().fetchone()
@@ -54,27 +67,27 @@ def validate_existing_project(engine: Engine, cfg: RagInitConfig) -> None:
     except Exception:
         stored_notes = {}
     stored_vbi = stored_notes.get("vector_backend_import")
-    if stored_vbi and stored_vbi != cfg.vector_backend_import:
+    if stored_vbi and stored_vbi != cfg.storage.vector_backend_import:
         diffs["vector_backend_import"] = {
-            "stored": stored_vbi, "expected": cfg.vector_backend_import}
+            "stored": stored_vbi, "expected": cfg.storage.vector_backend_import}
     if diffs:
         raise SchemaMismatchError(
             f"Stored project configuration differs: {json.dumps(diffs, indent=2)}\nRun with destructive=True to reinitialize.")
 
 
-def init_database(cfg: RagInitConfig, *, destructive: bool = False) -> Engine:
-    engine = create_engine_from_url(cfg.database_url)
+def init_database(cfg: ProjectConfig, *, destructive: bool = False) -> Engine:
+    engine = create_engine_from_url(cfg.storage.database_url)
 
     # determine import path: if not provided, pick built-in by backend_key
-    import_path = cfg.vector_backend_import
+    import_path = cfg.storage.vector_backend_import
     if not import_path:
-        if cfg.backend_key == "sqlite_vec":
+        if cfg.storage.backend_key == "sqlite_vec":
             import_path = "raggen.core.store.vector_backends.sqlite_vec:SQLiteVecBackend"
-        elif cfg.backend_key == "pgvector":
+        elif cfg.storage.backend_key == "pgvector":
             import_path = "raggen.core.store.vector_backends.pgvector:PgVectorBackend"
         else:
             raise BackendLoadError(
-                f"No vector_backend_import provided and unknown backend_key '{cfg.backend_key}'")
+                f"No vector_backend_import provided and unknown backend_key '{cfg.storage.backend_key}'")
 
     # load vector backend
     try:
@@ -101,7 +114,7 @@ def init_database(cfg: RagInitConfig, *, destructive: bool = False) -> Engine:
     metadata.create_all(engine)
 
     # create vector schema
-    backend.create_schema(engine, cfg.embedding_dim)
+    backend.create_schema(engine, cfg.embedding.dim)
 
     # check existing project row
     conn = engine.connect()
@@ -119,7 +132,7 @@ def init_database(cfg: RagInitConfig, *, destructive: bool = False) -> Engine:
     else:
         # insert new row, include vector_backend_import in notes
         notes = dict(cfg.notes or {})
-        notes["vector_backend_import"] = cfg.vector_backend_import
+        notes["vector_backend_import"] = cfg.storage.vector_backend_import
         cfg.notes = notes
         row = cfg.to_row()
         ins = rag_project.insert().values(**row)

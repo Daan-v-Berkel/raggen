@@ -1,6 +1,6 @@
-[project]
-root = "/Users/daanvanberkel/Documents/Projects/ragboot"
+project_root = "/Users/daanvanberkel/Documents/Projects/ragboot"
 schema_version = "v1"
+notes = []
 
 [scan]
 use_gitignore = true
