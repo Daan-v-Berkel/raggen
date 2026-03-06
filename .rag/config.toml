@@ -3,7 +3,7 @@ schema_version = "v1"
 notes = []
 
 [scan]
-use_gitignore = true
+ignorefiles = [".gitignore"]
 ignore = [".venv/", "node_modules/"]
 
 [chunking]

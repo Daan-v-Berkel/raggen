@@ -9,7 +9,7 @@ import json
 
 @dataclass
 class ScanConfig(TOMLDataclass):
-    use_gitignore: bool = True
+    ignore_files: List[str] = field(default_factory=lambda: [".gitignore"])
     ignore: List[str] = field(default_factory=lambda: [
                               ".venv/", "node_modules/"])
 

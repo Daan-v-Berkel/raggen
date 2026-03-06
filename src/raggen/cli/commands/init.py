@@ -40,9 +40,11 @@ def run_init(
 
     # interactive: simple prompt flow
     print(f"Initializing project at {root_p}")
-    use_git = input("Use .gitignore? (y/n) [y]: ").strip().lower() or 'y'
-    if use_git.startswith('y'):
-        cfg.scan.use_gitignore = True
+    use_ignorefiles = input(
+        "ignorefiles to use (comma separated) [.gitignore]: ").strip().lower() or '.gitignore'
+    if use_ignorefiles != '':  # TODO:more robust checking and make optional
+        ignorefiles = use_ignorefiles.split(',')
+        cfg.scan.ignorefiles = ignorefiles
     extra = input("Additional ignore globs (comma-separated) []: ").strip()
     if extra:
         cfg.scan.ignore = [s.strip() for s in extra.split(',') if s.strip()]

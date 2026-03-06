@@ -50,11 +50,7 @@ logs/
 .env.local
 .env.*
 
-# SQLite / DB files created by the tool
-.rag/*.db
-.rag/*.sqlite
-.rag/embeddings/
-.rag/cache/
+.rag/
 
 # Python wheel
 *.whl

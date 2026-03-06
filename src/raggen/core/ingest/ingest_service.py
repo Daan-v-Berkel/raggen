@@ -38,8 +38,7 @@ def do_ingest(destructive: bool = False) -> Dict[str, Any]:
 
     current_files = set()
     db_files = set(fetch_all_document_ids(engine))
-    # TODO: add proper ignorefile and other config
-    for fr in scan_files(cfg.project_root):
+    for fr in scan_files(cfg.project_root, ignore_filenames=cfg.scan.ignore_files):
         current_files.add(fr.relative_path)
         # gating: raw bytes
         if not should_ingest_changed_file(fr, cfg):
@@ -78,6 +77,7 @@ def do_ingest(destructive: bool = False) -> Dict[str, Any]:
                     'empty_text_after_parse', 0) + 1
                 continue
             chunker = Chunker(doc)
+            # TODO:actual chunk_config
             chunks = chunker.chunk(DEFAULT_CHUNK_CONFIG)
             # embed
             em_results = embed_chunks(

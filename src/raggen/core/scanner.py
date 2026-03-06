@@ -6,7 +6,7 @@ import mimetypes
 import os
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterable, Iterator
+from typing import Iterable, Iterator, List
 
 
 @dataclass(frozen=True)
@@ -48,40 +48,42 @@ class GitIgnoreLike:
         self._rules = list(rules)
 
     @staticmethod
-    def from_ignore_file(ignore_file: Path) -> "GitIgnoreLike":
+    def from_ignore_files(root, ignore_files: List[Path]) -> "GitIgnoreLike":
         rules: list[_Rule] = []
-        if not ignore_file.exists():
-            return GitIgnoreLike(rules)
+        for file in ignore_files:
+            ignore_file = (root / file)
+            if not ignore_file.exists():
+                return GitIgnoreLike(rules)
 
-        for raw in ignore_file.read_text(encoding="utf-8", errors="replace").splitlines():
-            line = raw.strip("\n\r")
-            if not line or line.lstrip().startswith("#"):
-                continue
+            for raw in ignore_file.read_text(encoding="utf-8", errors="replace").splitlines():
+                line = raw.strip("\n\r")
+                if not line or line.lstrip().startswith("#"):
+                    continue
 
-            # allow escaping a leading '#' or '!' with backslash
-            if line.startswith(r"\#") or line.startswith(r"\!"):
-                line = line[1:]
+                # allow escaping a leading '#' or '!' with backslash
+                if line.startswith(r"\#") or line.startswith(r"\!"):
+                    line = line[1:]
 
-            negated = line.startswith("!")
-            if negated:
-                line = line[1:]
+                negated = line.startswith("!")
+                if negated:
+                    line = line[1:]
 
-            anchored = line.startswith("/")
-            if anchored:
-                line = line[1:]
+                anchored = line.startswith("/")
+                if anchored:
+                    line = line[1:]
 
-            dir_only = line.endswith("/")
-            if dir_only:
-                line = line[:-1]
+                dir_only = line.endswith("/")
+                if dir_only:
+                    line = line[:-1]
 
-            line = line.strip()
-            if not line:
-                continue
+                line = line.strip()
+                if not line:
+                    continue
 
-            # normalize to posix-ish matching
-            pattern = line.replace(os.sep, "/")
-            rules.append(_Rule(pattern=pattern, negated=negated,
-                         dir_only=dir_only, anchored=anchored))
+                # normalize to posix-ish matching
+                pattern = line.replace(os.sep, "/")
+                rules.append(_Rule(pattern=pattern, negated=negated,
+                             dir_only=dir_only, anchored=anchored))
 
         return GitIgnoreLike(rules)
 
@@ -151,7 +153,7 @@ def _guess_mime_type(path: Path) -> str:
 def scan_files(
     root_dir: str | Path,
     *,
-    ignore_filename: str = ".gitignore",
+    ignore_filenames: List[str],
     follow_symlinks: bool = False,
     include_hidden: bool = True,
 ) -> Iterator[FileRef]:
@@ -163,7 +165,7 @@ def scan_files(
     ignore rules apply to *relative paths* under root_dir.
     """
     root = Path(root_dir).resolve()
-    ignore = GitIgnoreLike.from_ignore_file(root / ignore_filename)
+    ignore = GitIgnoreLike.from_ignore_files(root, ignore_filenames)
 
     # Use os.walk for efficient dir pruning.
     for dirpath, dirnames, filenames in os.walk(root, followlinks=follow_symlinks):
