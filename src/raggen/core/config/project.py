@@ -41,6 +41,7 @@ class StorageConfig(TOMLDataclass):
 @dataclass
 class QueryConfig(TOMLDataclass):
     model_id: str = ""
+    top_k: int = 8
 
 
 @dataclass
@@ -48,6 +49,13 @@ class RerankConfig(TOMLDataclass):
     enabled: bool = False
     model_id: str = ""
     top_n: int = 50
+
+
+@dataclass
+class GenerationConfig(TOMLDataclass):
+    enabled: bool = False
+    provider: str = ""
+    model_id: str = ""
 
 
 @dataclass
@@ -60,6 +68,7 @@ class ProjectConfig(ConfigDataclass, TOMLDataclass):
     storage: StorageConfig = field(default_factory=StorageConfig)
     query: QueryConfig = field(default_factory=QueryConfig)
     rerank: RerankConfig = field(default_factory=RerankConfig)
+    generation: GenerationConfig = field(default_factory=GenerationConfig)
     notes: List[str] = field(default_factory=lambda: [])
 
     def to_row(self) -> dict:

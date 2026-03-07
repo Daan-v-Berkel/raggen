@@ -7,6 +7,10 @@ from .base import VectorBackend
 from .base import List as _List  # type: ignore
 
 
+def _pgvector_literal(vector: List[float]) -> str:
+    return "[" + ",".join(str(float(x)) for x in vector) + "]"
+
+
 class PgVectorBackend(VectorBackend):
     key = "pgvector"
 
@@ -86,3 +90,36 @@ class PgVectorBackend(VectorBackend):
 
         with engine.begin() as conn:
             conn.execute(stmt, {"chunk_ids": chunks})
+
+    def search(
+        self,
+        engine,
+        *,
+        query_vector: list[float],
+        top_k: int,
+    ) -> list[tuple[str, float]]:
+        if not query_vector:
+            raise ValueError("query_vector must not be empty")
+        if top_k <= 0:
+            raise ValueError("top_k must be > 0")
+
+        # Cosine distance: lower is better
+        stmt = text("""
+            SELECT
+                chunk_id,
+                embedding <=> CAST(:query_embedding AS vector) AS distance
+            FROM chunk_vectors
+            ORDER BY embedding <=> CAST(:query_embedding AS vector) ASC
+            LIMIT :top_k
+        """)
+
+        with engine.connect() as conn:
+            rows = conn.execute(
+                stmt,
+                {
+                    "query_embedding": _pgvector_literal(query_vector),
+                    "top_k": top_k,
+                },
+            ).fetchall()
+
+        return [(row[0], float(row[1])) for row in rows]

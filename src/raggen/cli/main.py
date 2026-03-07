@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import argparse
-from .commands import init as init_cmd, ingest as ingest_cmd
+from raggen.cli.commands import init as init_cmd, ingest as ingest_cmd, query as query_cmd
 
 
 def main(argv=None):
@@ -17,6 +17,11 @@ def main(argv=None):
     ingest_p.add_argument("--config", default=".rag/config.toml")
     ingest_p.add_argument("--destructive", action="store_true")
 
+    query_p = sub.add_parser("query", help="Query the indexed project")
+    query_p.add_argument("text", type=str, help="Query text")
+    query_p.add_argument("--config", type=str, default=None)
+    query_p.add_argument("--top-k", type=int, default=None)
+
     args = parser.parse_args(argv)
 
     if args.command == "init":
@@ -25,6 +30,12 @@ def main(argv=None):
     elif args.command == "ingest":
         ingest_cmd.run_ingest(config_path=args.config,
                               destructive=args.destructive)
+    elif args.command == "query":
+        return query_cmd.run_query(
+            args.text,
+            config_path=args.config,
+            top_k=args.top_k,
+        )
     else:
         parser.print_help()
 

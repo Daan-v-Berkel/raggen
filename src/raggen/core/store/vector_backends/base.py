@@ -35,3 +35,10 @@ class VectorBackend(ABC):
     @abstractmethod
     def delete_vectors(self, engine: Engine, *, chunks: List[str]) -> None:
         """Delete vectors by chunk_id"""
+
+    @abstractmethod
+    def search(self, engine: Engine, *, query_vector: list[float], top_k: int) -> list[tuple[str, float]]:
+        """the main entry point for querying the database.
+        Return [(chunk_id, score)] where score is backend-native distance.
+        Lower is better.
+        """

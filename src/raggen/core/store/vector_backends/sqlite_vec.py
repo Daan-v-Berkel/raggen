@@ -204,3 +204,39 @@ class SQLiteVecBackend(VectorBackend):
                 "DELETE FROM chunk_vectors_map WHERE chunk_id IN :chunk_ids"
             ).bindparams(bindparam("chunk_ids", expanding=True))
             conn.execute(del_map, {"chunk_ids": chunks})
+
+    def search(
+        self,
+        engine,
+        *,
+        query_vector: list[float],
+        top_k: int,
+    ) -> list[tuple[str, float]]:
+        if not query_vector:
+            raise ValueError("query_vector must not be empty")
+        if top_k <= 0:
+            raise ValueError("top_k must be > 0")
+
+        stmt = text("""
+            SELECT
+                m.chunk_id,
+                v.distance
+            FROM chunk_vectors AS v
+            JOIN chunk_vectors_map AS m
+              ON m.id = v.rowid
+            WHERE v.embedding MATCH :query_embedding
+              AND k = :top_k
+            ORDER BY v.distance ASC
+        """)
+
+        with engine.connect() as conn:
+            self._ensure_vec_loaded(conn)
+            rows = conn.execute(
+                stmt,
+                {
+                    "query_embedding": _serialize_f32(query_vector),
+                    "top_k": top_k,
+                },
+            ).fetchall()
+
+        return [(row[0], float(row[1])) for row in rows]

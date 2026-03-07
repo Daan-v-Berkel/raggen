@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from typing import List, Dict, Any
+import json
 from sqlalchemy import select
 from sqlalchemy.engine import Engine, Connection
 from .metadata_schema import documents, chunks, embeddings
@@ -31,6 +32,61 @@ class MetadataStore:
             )
         )
         return chunk_ids
+
+    def fetch_chunks_by_ids(self, conn: Connection, chunk_ids: list[str]) -> list[dict[str, Any]]:
+        """
+        Fetch chunk rows for the given chunk_ids.
+
+        Returns rows in the same order as `chunk_ids`, not database order.
+        Each row contains enough data to build a RetrievedChunk.
+        """
+        if not chunk_ids:
+            return []
+
+        stmt = select(
+            chunks.c.chunk_id,
+            chunks.c.doc_id,
+            chunks.c.text,
+            chunks.c.chunk_index,
+            chunks.c.start_offset,
+            chunks.c.end_offset,
+            chunks.c.page_number,
+            chunks.c.heading_path_json,
+        ).where(chunks.c.chunk_id.in_(chunk_ids))
+
+        rows = conn.execute(stmt).mappings().all()
+
+        # Reorder to match retrieval order
+        by_id = {row["chunk_id"]: row for row in rows}
+
+        ordered: list[dict[str, Any]] = []
+        for chunk_id in chunk_ids:
+            row = by_id.get(chunk_id)
+            if row is None:
+                continue
+
+            heading_path = None
+            raw_heading_path = row.get("heading_path_json")
+            if raw_heading_path:
+                try:
+                    heading_path = json.loads(raw_heading_path)
+                except Exception:
+                    heading_path = None
+
+            ordered.append(
+                {
+                    "chunk_id": row["chunk_id"],
+                    "doc_id": row["doc_id"],
+                    "text": row["text"],
+                    "chunk_index": row["chunk_index"],
+                    "start_offset": row["start_offset"],
+                    "end_offset": row["end_offset"],
+                    "page_number": row["page_number"],
+                    "heading_path": heading_path,
+                }
+            )
+
+        return ordered
 
     def delete_documents(self, conn: Connection, doc_ids: List[str]) -> None:
         stmt = documents.delete().where(documents.c.doc_id.in_(doc_ids))
