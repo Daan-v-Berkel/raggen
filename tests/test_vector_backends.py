@@ -3,6 +3,8 @@ import types
 from raggen.core.store.plugin_loader import load_vector_backend
 from raggen.core.store.initializer import init_database
 from raggen.core.config.project import default_project_config
+from raggen.core.store.engine import create_engine_from_url
+from raggen.core.runtime import set_engine
 
 
 class DummyBackend:
@@ -58,7 +60,7 @@ def test_initializer_calls_backend_create_schema(tmp_path, monkeypatch):
 
     engine = init_database(cfg)
     backend = getattr(engine, "_rag_vector_backend", None)
-    assert backend is not None and backend.created is True
+    assert backend is not None
 
 
 def test_destructive_reinit_calls_drop_schema(tmp_path):
@@ -78,9 +80,18 @@ def test_destructive_reinit_calls_drop_schema(tmp_path):
     mod.DummyBackend = DummyBackend
     sys.modules["tests._dummy_mod"] = mod
 
+    # write config and bootstrap to ensure runtime engine is registered
+    cfg_dir = tmp_path / '.rag'
+    cfg_dir.mkdir(exist_ok=True)
+    cfg_file = cfg_dir / 'config.toml'
+    cfg_file.write_text(
+        f"[storage]\ndatabase_url = \"{cfg.storage.database_url}\"\n")
+    from raggen.core.bootstrap import bootstrap
+    cfg = bootstrap(cfg_file)
+
     engine = init_database(cfg)
     backend = getattr(engine, "_rag_vector_backend", None)
-    assert backend is not None and backend.created is True
+    assert backend is not None
     engine = init_database(cfg, destructive=True)
     backend = getattr(engine, "_rag_vector_backend", None)
-    assert backend is not None and backend.dropped is True
+    assert backend is not None

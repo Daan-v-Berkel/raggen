@@ -4,6 +4,8 @@ from pathlib import Path
 from typing import Optional
 
 from raggen.core.config.project import ProjectConfig
+from raggen.core.store.engine import create_engine_from_url
+from raggen.core.runtime import set_engine
 
 
 DEFAULT_CONFIG_PATH = Path(".rag/config.toml")
@@ -35,6 +37,13 @@ def bootstrap(config_path: Optional[Path] = None) -> ProjectConfig:
         )
 
     cfg = ProjectConfig.load_config(path)
+
+    # create and register a shared engine for runtime reuse
+    engine = create_engine_from_url(cfg.storage.database_url)
+    try:
+        set_engine(engine)
+    except Exception:
+        pass
 
     return cfg
 

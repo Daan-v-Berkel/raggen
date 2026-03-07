@@ -1,10 +1,10 @@
 from types import SimpleNamespace
 import numpy as np
 
-from raggen.core.ingest.ingest_service import init_and_ingest
 from raggen.core.config.project import default_project_config
 from raggen.core.parsing.parser import ParserService
 from raggen.core.chunking.chunker import Chunker
+from raggen.core.ingest import do_ingest
 
 
 def _dummy_embedder_factory(*args, **kwargs):
@@ -28,7 +28,27 @@ def test_empty_raw_file_is_skipped(tmp_path, monkeypatch):
     cfg = default_project_config(root)
     cfg.storage.database_url = f"sqlite:///{(root / '.rag' / 'rag.db').resolve().as_posix()}"
 
+    # write complete config and bootstrap so runtime uses this config
+    cfg_dir = root / '.rag'
+    cfg_dir.mkdir(exist_ok=True)
+    cfg_file = cfg_dir / 'config.toml'
+    cfg_file.write_text(
+        f"[storage]\n"
+        f"backend_key = \"{cfg.storage.backend_key}\"\n"
+        f"database_url = \"{cfg.storage.database_url}\"\n"
+        f"vector_backend_import = \"{cfg.storage.vector_backend_import}\"\n"
+        f"[embedding]\n"
+        f"model_id = \"{cfg.embedding.model_id}\"\n"
+        f"dim = {cfg.embedding.dim}\n"
+        f"normalize = {str(cfg.embedding.normalize).lower()}\n"
+    )
+    from raggen.core.bootstrap import bootstrap
+    cfg = bootstrap(cfg_file)
+    from raggen.core.store.initializer import init_database
+    init_database(cfg)
+
     # Prevent heavy model loading
+    monkeypatch.chdir(root)
     monkeypatch.setattr("raggen.core.ingest.ingest_service.LocalSentenceTransformerEmbedder",
                         lambda model_id: _dummy_embedder_factory())
 
@@ -37,7 +57,7 @@ def test_empty_raw_file_is_skipped(tmp_path, monkeypatch):
         raise AssertionError("parser should not be called for empty raw files")
     monkeypatch.setattr(ParserService, "parse_document", _fail_parse)
 
-    stats = init_and_ingest(cfg=cfg)
+    stats = do_ingest()
     assert stats["skip_reasons"].get("empty_bytes", 0) == 1
 
 
@@ -49,7 +69,27 @@ def test_empty_parsed_document_is_skipped(tmp_path, monkeypatch):
     cfg = default_project_config(root)
     cfg.storage.database_url = f"sqlite:///{(root / '.rag' / 'rag.db').resolve().as_posix()}"
 
+    # write complete config and bootstrap so runtime uses this config
+    cfg_dir = root / '.rag'
+    cfg_dir.mkdir(exist_ok=True)
+    cfg_file = cfg_dir / 'config.toml'
+    cfg_file.write_text(
+        f"[storage]\n"
+        f"backend_key = \"{cfg.storage.backend_key}\"\n"
+        f"database_url = \"{cfg.storage.database_url}\"\n"
+        f"vector_backend_import = \"{cfg.storage.vector_backend_import}\"\n"
+        f"[embedding]\n"
+        f"model_id = \"{cfg.embedding.model_id}\"\n"
+        f"dim = {cfg.embedding.dim}\n"
+        f"normalize = {str(cfg.embedding.normalize).lower()}\n"
+    )
+    from raggen.core.bootstrap import bootstrap
+    cfg = bootstrap(cfg_file)
+    from raggen.core.store.initializer import init_database
+    init_database(cfg)
+
     # Prevent heavy model loading
+    monkeypatch.chdir(root)
     monkeypatch.setattr("raggen.core.ingest.ingest_service.LocalSentenceTransformerEmbedder",
                         lambda model_id: _dummy_embedder_factory())
 
@@ -65,7 +105,7 @@ def test_empty_parsed_document_is_skipped(tmp_path, monkeypatch):
             "chunker should not be called for empty parsed document")
     monkeypatch.setattr(Chunker, "chunk", _fail_chunk)
 
-    stats = init_and_ingest(cfg=cfg)
+    stats = do_ingest()
     assert stats["skip_reasons"].get("empty_text_after_parse", 0) == 1
 
 
@@ -76,6 +116,27 @@ def test_whitespace_only_file_is_skipped(tmp_path, monkeypatch):
 
     cfg = default_project_config(root)
     cfg.storage.database_url = f"sqlite:///{(root / '.rag' / 'rag.db').resolve().as_posix()}"
+
+    # write complete config and bootstrap so runtime uses this config
+    cfg_dir = root / '.rag'
+    cfg_dir.mkdir(exist_ok=True)
+    cfg_file = cfg_dir / 'config.toml'
+    cfg_file.write_text(
+        f"[storage]\n"
+        f"backend_key = \"{cfg.storage.backend_key}\"\n"
+        f"database_url = \"{cfg.storage.database_url}\"\n"
+        f"vector_backend_import = \"{cfg.storage.vector_backend_import}\"\n"
+        f"[embedding]\n"
+        f"model_id = \"{cfg.embedding.model_id}\"\n"
+        f"dim = {cfg.embedding.dim}\n"
+        f"normalize = {str(cfg.embedding.normalize).lower()}\n"
+    )
+    from raggen.core.bootstrap import bootstrap
+    cfg = bootstrap(cfg_file)
+    from raggen.core.store.initializer import init_database
+    init_database(cfg)
+    # ensure project root lookup uses tmp_path
+    monkeypatch.chdir(root)
 
     monkeypatch.setattr("raggen.core.ingest.ingest_service.LocalSentenceTransformerEmbedder",
                         lambda model_id: _dummy_embedder_factory())
@@ -89,5 +150,5 @@ def test_whitespace_only_file_is_skipped(tmp_path, monkeypatch):
     monkeypatch.setattr(Chunker, "chunk", lambda self, conf: (
         _ for _ in ()).throw(AssertionError("chunker should not be called")))
 
-    stats = init_and_ingest(cfg=cfg)
+    stats = do_ingest()
     assert stats["skip_reasons"].get("empty_text_after_parse", 0) == 1

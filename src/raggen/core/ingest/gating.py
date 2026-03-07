@@ -4,7 +4,7 @@ from sqlalchemy import select
 from typing import Tuple, Optional
 from raggen.core.store.metadata_schema import documents
 from raggen.core.scanner import FileRef
-from raggen.core.store.engine import create_engine_from_url
+from raggen.core.runtime import get_engine
 from raggen.core.config.project import ProjectConfig
 
 
@@ -44,7 +44,7 @@ def should_ingest_changed_file(fr: FileRef, cfg: ProjectConfig) -> bool:
 
     Checks for duplicate in database (already ingested) by mtime & byte size.
     """
-    engine = create_engine_from_url(cfg.storage.database_url)
+    engine = get_engine()
     conn = engine.connect()
     sel = select(documents.c.doc_id, documents.c.byte_size, documents.c.mtime_ns).where(
         documents.c.doc_id == fr.relative_path)

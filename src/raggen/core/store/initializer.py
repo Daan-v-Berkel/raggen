@@ -4,10 +4,10 @@ from sqlalchemy import select
 from sqlalchemy.engine import Engine
 
 from raggen.core.config.project import ProjectConfig
-from .engine import create_engine_from_url
 from .metadata_schema import metadata, rag_project
 from .exceptions import SchemaMismatchError, BackendLoadError, BackendNotSupportedError
 from .plugin_loader import load_vector_backend
+from raggen.core.runtime import get_engine, set_engine
 import json
 
 
@@ -76,7 +76,30 @@ def validate_existing_project(engine: Engine, cfg: ProjectConfig) -> None:
 
 
 def init_database(cfg: ProjectConfig, *, destructive: bool = False) -> Engine:
-    engine = create_engine_from_url(cfg.storage.database_url)
+    try:
+        engine = get_engine()
+        # If a global engine is registered but points to a different database URL,
+        # create a fresh engine for this configuration to avoid cross-config leaks.
+        try:
+            from .engine import create_engine_from_url
+            # compare canonical URLs
+            if str(getattr(engine, "url", "")) != cfg.storage.database_url:
+                engine = create_engine_from_url(cfg.storage.database_url)
+                try:
+                    set_engine(engine)
+                except Exception:
+                    pass
+        except Exception:
+            # ignore and proceed with the registered engine if we couldn't create a new one
+            pass
+    except RuntimeError:
+        # If bootstrap didn't initialize engine, create it here and register
+        from .engine import create_engine_from_url
+        engine = create_engine_from_url(cfg.storage.database_url)
+        try:
+            set_engine(engine)
+        except Exception:
+            pass
 
     # determine import path: if not provided, pick built-in by backend_key
     import_path = cfg.storage.vector_backend_import
@@ -101,44 +124,54 @@ def init_database(cfg: ProjectConfig, *, destructive: bool = False) -> Engine:
         raise BackendNotSupportedError(
             f"Backend '{backend.key}' does not support engine dialect '{engine.dialect.name}'")
 
-    # If destructive, drop vector schema first (safer) then drop metadata
-    if destructive:
-        try:
-            backend.drop_schema(engine)
-        except Exception:
-            # ignore errors during drop to allow metadata drop to proceed
-            pass
-        metadata.drop_all(engine)
-
-    # create metadata tables
-    metadata.create_all(engine)
-
-    # create vector schema
-    backend.create_schema(engine, cfg.embedding.dim)
-
-    # check existing project row
+    # Check existing project row BEFORE creating vector schema to avoid backend-side limits
     conn = engine.connect()
     sel = select(rag_project).where(rag_project.c.id == 1)
-    res = conn.execute(sel).mappings().fetchone()
+    try:
+        res = conn.execute(sel).mappings().fetchone()
+    except Exception:
+        # Table may not exist yet; treat as no stored project
+        res = None
 
     if res and not destructive:
         # validate
         stored = dict(res)
         diffs = _compare_configs(stored, cfg)
+        conn.close()
         if diffs:
-            conn.close()
             raise SchemaMismatchError(
                 f"Stored project configuration differs: {json.dumps(diffs, indent=2)}\nRun with destructive=True to reinitialize.")
     else:
+        # If destructive, drop vector schema first (safer) then drop metadata
+        conn.close()
+        if destructive:
+            try:
+                backend.drop_schema(engine)
+            except Exception:
+                # ignore errors during drop to allow metadata drop to proceed
+                pass
+            metadata.drop_all(engine)
+
+        # create metadata tables
+        metadata.create_all(engine)
+
+        # create vector schema
+        backend.create_schema(engine, cfg.embedding.dim)
+
         # insert new row, include vector_backend_import in notes
         notes = dict(cfg.notes or {})
         notes["vector_backend_import"] = cfg.storage.vector_backend_import
         cfg.notes = notes
         row = cfg.to_row()
-        ins = rag_project.insert().values(**row)
-        conn.execute(ins)
-        conn.commit()
-    conn.close()
+        with engine.begin() as conn2:
+            ins = rag_project.insert().values(**row)
+            conn2.execute(ins)
+    # attach backend to engine for callers, but return engine for backwards compatibility
+    try:
+        setattr(engine, "_rag_vector_backend", backend)
+    except Exception:
+        pass
+    return engine
     # attach backend to engine for callers, but return engine for backwards compatibility
     try:
         setattr(engine, "_rag_vector_backend", backend)

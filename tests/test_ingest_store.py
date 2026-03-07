@@ -4,9 +4,10 @@ import pytest
 from sqlalchemy import select
 
 from raggen.core.config.project import default_project_config
-from raggen.core.store.initializer import init_database
 from raggen.core.store.metadata_store import MetadataStore
 from raggen.core.store.ingest_store import store_document_bundle
+from raggen.core.store.engine import create_engine_from_url
+from raggen.core.runtime import set_engine
 from raggen.core.store.metadata_schema import documents, chunks, embeddings
 
 
@@ -36,18 +37,22 @@ def _inject_dummy_module(name="tests._dummy_init_mod"):
 
 
 def test_metadata_store_upserts_sqlite(tmp_path):
-    db_file = tmp_path / "rag.db"
     import_path = _inject_dummy_module()
     cfg = default_project_config(tmp_path)
+    cfg.storage.database_url = f"sqlite:///{(tmp_path / '.rag' / 'rag.db').resolve().as_posix()}"
 
-    cfg.storage.database_url = f"sqlite:///{db_file.resolve().as_posix()}"
+    engine = create_engine_from_url(cfg.storage.database_url)
+    set_engine(engine)
     cfg.storage.backend_key = "dummy_init"
     cfg.storage.vector_backend_import = import_path
     cfg.embedding.model_id = "m"
     cfg.embedding.dim = 3
     cfg.embedding.normalize = True
 
-    engine = init_database(cfg)
+    # ensure metadata tables and backend are initialized on the engine
+    from raggen.core.store.initializer import init_database
+    init_database(cfg)
+
     ms = MetadataStore(engine)
 
     doc_row = {
@@ -138,17 +143,21 @@ class GoodBackend(RaisingBackend):
 
 
 def test_store_document_bundle_transactionality(tmp_path):
-    db_file = tmp_path / "rag.db"
     import_path = _inject_dummy_module()
     cfg = default_project_config(tmp_path)
+    cfg.storage.database_url = f"sqlite:///{(tmp_path / '.rag' / 'rag.db').resolve().as_posix()}"
 
-    cfg.storage.database_url = f"sqlite:///{db_file.resolve().as_posix()}"
+    engine = create_engine_from_url(cfg.storage.database_url)
+    set_engine(engine)
     cfg.storage.backend_key = "dummy_init"
     cfg.storage.vector_backend_import = import_path
     cfg.embedding.model_id = "m"
     cfg.embedding.dim = 3
     cfg.embedding.normalize = True
-    engine = init_database(cfg)
+
+    # ensure metadata tables and backend are initialized for this engine
+    from raggen.core.store.initializer import init_database
+    init_database(cfg)
 
     document_row = {
         "doc_id": "dtx",
