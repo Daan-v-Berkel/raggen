@@ -4,6 +4,8 @@ from pathlib import Path
 import os
 from raggen.core.config.project import default_project_config
 from raggen.core.ingest.ingest_service import do_ingest
+from raggen.core.store.initializer import init_database
+from raggen.core.bootstrap import bootstrap
 
 
 def run_init(
@@ -77,12 +79,16 @@ def run_init(
         cfg.storage.vector_backend_import = vbi
 
     cfg.save(cfg_path)
+
     print(f"Wrote config to {cfg_path}")
+    bootstrap(cfg_path)
+    init_database(cfg, destructive=destructive)
+    print("initialised database and schema")
 
     confirm = input(
-        "Initialize DB and ingest now? (y/n) [n]: ").strip().lower() or 'n'
+        "ingest now? (y/n) [n]: ").strip().lower() or 'n'
     if confirm.startswith('y'):
-        stats = do_ingest(cfg=cfg, destructive_init=False)
+        stats = do_ingest(destructive=False)
         print("Ingest completed:", stats)
     else:
         print("Done. Run `rag ingest` to perform ingestion later.")

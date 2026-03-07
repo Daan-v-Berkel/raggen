@@ -76,30 +76,7 @@ def validate_existing_project(engine: Engine, cfg: ProjectConfig) -> None:
 
 
 def init_database(cfg: ProjectConfig, *, destructive: bool = False) -> Engine:
-    try:
-        engine = get_engine()
-        # If a global engine is registered but points to a different database URL,
-        # create a fresh engine for this configuration to avoid cross-config leaks.
-        try:
-            from .engine import create_engine_from_url
-            # compare canonical URLs
-            if str(getattr(engine, "url", "")) != cfg.storage.database_url:
-                engine = create_engine_from_url(cfg.storage.database_url)
-                try:
-                    set_engine(engine)
-                except Exception:
-                    pass
-        except Exception:
-            # ignore and proceed with the registered engine if we couldn't create a new one
-            pass
-    except RuntimeError:
-        # If bootstrap didn't initialize engine, create it here and register
-        from .engine import create_engine_from_url
-        engine = create_engine_from_url(cfg.storage.database_url)
-        try:
-            set_engine(engine)
-        except Exception:
-            pass
+    engine = get_engine()
 
     # determine import path: if not provided, pick built-in by backend_key
     import_path = cfg.storage.vector_backend_import
