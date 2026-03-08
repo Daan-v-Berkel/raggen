@@ -25,7 +25,7 @@ echo "Installing project in editable mode..."
 pip install -e .
 
 echo "Running tests..."
-pytest
+pytest -q
 
 echo "Testing CLI..."
 rag -h
