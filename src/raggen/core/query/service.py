@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from raggen.core.query.models import QueryRequest, QueryResponse, RetrievedChunk
+from raggen.core.query.generator import generate_answer, GenerationNotImplementedError
 from raggen.core.store.metadata_store import MetadataStore
 from raggen.core.runtime import get_engine
 from raggen.core.config.project import ProjectConfig
@@ -84,12 +85,28 @@ def query(request: QueryRequest) -> QueryResponse:
             )
         )
 
+    answer = None
+
+    if cfg.generation.enabled:
+        model_id = request.llm_model_id or cfg.generation.model_id
+        if model_id:
+            try:
+                answer = generate_answer(
+                    query=request.text,
+                    chunks=matches,
+                    model_id=model_id,
+                )
+            except GenerationNotImplementedError:
+                # generation is stubbed for now; leave answer as None
+                answer = None
+
     return QueryResponse(
         query=request.text,
         matches=matches,
-        answer=None,
+        answer=answer,
         used_query_model=query_model_id,
-        used_llm_model=request.llm_model_id or None,
+        used_llm_model=(
+            request.llm_model_id or cfg.generation.model_id or None),
     )
 
 
