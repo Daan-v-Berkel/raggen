@@ -1,23 +1,48 @@
 from __future__ import annotations
 
+from raggen.core.ingest.config_models import ProjectConfig
+from raggen.core.query.generation_models import GenerationResult
 from raggen.core.query.models import RetrievedChunk
 
 
 class GenerationNotImplementedError(NotImplementedError):
+    """Raised when generation is requested but no provider is implemented."""
     pass
 
 
 def generate_answer(
+    *,
     query: str,
     chunks: list[RetrievedChunk],
-    model_id: str,
-) -> str:
+    cfg: ProjectConfig,
+) -> GenerationResult:
     """
-    Placeholder generation interface.
+    Stable generation entrypoint.
 
-    Future implementations may route to different providers/models,
-    but query service should depend only on this function-level contract.
+    This defines the seam where future generation providers will plug in,
+    but does not implement any real provider calls yet.
     """
+    if not cfg.generation.enabled:
+        return GenerationResult(
+            text="",
+            model_id="",
+            provider="",
+            usage=None,
+        )
+
+    provider = cfg.generation.provider.strip()
+    model_id = cfg.generation.model_id.strip()
+
+    if not provider:
+        raise ValueError(
+            "Generation is enabled, but no generation provider is configured."
+        )
+
+    if not model_id:
+        raise ValueError(
+            "Generation is enabled, but no generation model_id is configured."
+        )
+
     raise GenerationNotImplementedError(
-        f"Answer generation is not implemented yet (requested model: {model_id!r})."
+        f"Generation provider '{provider}' is not implemented yet."
     )

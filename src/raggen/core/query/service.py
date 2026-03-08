@@ -86,27 +86,28 @@ def query(request: QueryRequest) -> QueryResponse:
         )
 
     answer = None
+    used_llm_model = None
 
     if cfg.generation.enabled:
-        model_id = request.llm_model_id or cfg.generation.model_id
-        if model_id:
-            try:
-                answer = generate_answer(
-                    query=request.text,
-                    chunks=matches,
-                    model_id=model_id,
-                )
-            except GenerationNotImplementedError:
-                # generation is stubbed for now; leave answer as None
-                answer = None
+        try:
+            gen_result = generate_answer(
+                query=request.text,
+                chunks=matches,
+                cfg=cfg,
+            )
+            answer = gen_result.text or None
+            used_llm_model = gen_result.model_id or None
+        except GenerationNotImplementedError:
+            # Retrieval must still succeed even if generation is not implemented yet.
+            answer = None
+            used_llm_model = cfg.generation.model_id or None
 
     return QueryResponse(
         query=request.text,
         matches=matches,
         answer=answer,
         used_query_model=query_model_id,
-        used_llm_model=(
-            request.llm_model_id or cfg.generation.model_id or None),
+        used_llm_model=used_llm_model,
     )
 
 
