@@ -1,13 +1,44 @@
 [build-system]
-requires = ["setuptools>=69", "wheel"]
+requires = ["setuptools>=82", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "raggen"
-version = "0.1.0"
-description = "Local-first RAG pipeline + CLI workspace"
-requires-python = ">=3.10"
-dependencies = ["sqlite-vec<=0.1.0"]
+version = "2026.0.1"
+description = "Local-first RAG pipeline"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = ["sqlite-vec"]
+
+authors = [
+	{ name = "Daan van Berkel", email = "daanvb1990@hotmail.com" }
+]
+
+license = "MIT"
+license-files = ["LICENSE"]
+
+keywords = [
+  "rag",
+  "retrieval-augmented-generation",
+  "llm",
+  "embeddings",
+  "information-retrieval",
+]
+
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Intended Audience :: Developers",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Programming Language :: Python :: 3.14",
+  "Topic :: Scientific/Engineering :: Artificial Intelligence"
+]
+
+[project.urls]
+Homepage = "https://github.com/Daan-v-Berkel/raggen"
+Repository = "https://github.com/Daan-v-Berkel/raggen"
+Issues = "https://github.com/Daan-v-Berkel/raggen/issues"
 
 [project.scripts]
 rag = "raggen.cli.main:main"
@@ -17,6 +48,3 @@ package-dir = {"" = "src"}
 
 [tool.setuptools.packages.find]
 where = ["src"]
-
-[tool.flake8]
-ignore = ["E501"]
