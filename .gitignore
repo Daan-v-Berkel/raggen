@@ -70,3 +70,4 @@ __pycache__/
 .git/
 .crush/
 .rag_cache/
+docs/
