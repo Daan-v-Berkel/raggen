@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from raggen.core.ingest.config_models import ProjectConfig
+from raggen.core.config.project import ProjectConfig
 from raggen.core.query.generation_models import GenerationResult
 from raggen.core.query.models import RetrievedChunk
 
