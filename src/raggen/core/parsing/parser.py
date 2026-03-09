@@ -1,4 +1,4 @@
-from typing import Dict, Protocol, List, Optional
+from typing import Protocol, List, Optional
 from pydantic import BaseModel
 from dataclasses import dataclass
 import re
