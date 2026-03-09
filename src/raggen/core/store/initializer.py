@@ -76,7 +76,28 @@ def validate_existing_project(engine: Engine, cfg: ProjectConfig) -> None:
 
 
 def init_database(cfg: ProjectConfig, *, destructive: bool = False) -> Engine:
-    engine = get_engine()
+    # Prefer runtime engine when it matches the requested DB URL; otherwise create a
+    # transient engine for the requested cfg.storage.database_url so callers that
+    # don't bootstrap still work against the intended database.
+    try:
+        engine = get_engine()
+        try:
+            # compare configured URL to current engine url and create a local
+            # engine for this cfg if they differ
+            from raggen.core.store.engine import create_engine_from_url
+
+            current_url = getattr(engine, "url", None)
+            if current_url is not None and str(current_url) != cfg.storage.database_url:
+                engine = create_engine_from_url(cfg.storage.database_url)
+        except Exception:
+            # if anything goes wrong comparing/creating engine, fall back to the
+            # runtime engine
+            pass
+    except RuntimeError:
+        # no runtime engine registered; create one from cfg
+        from raggen.core.store.engine import create_engine_from_url
+
+        engine = create_engine_from_url(cfg.storage.database_url)
 
     # determine import path: if not provided, pick built-in by backend_key
     import_path = cfg.storage.vector_backend_import
