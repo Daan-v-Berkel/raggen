@@ -43,8 +43,10 @@ class Chunk(BaseModel):
     chunk_index: NonNegativeInt
 
     text: str
-    start_char: Optional[int] = None                    # offsets relative to *input text*, optional
-    end_char: Optional[int] = None                      # exclusive end, optional
+    # offsets relative to *input text*, optional
+    start_char: Optional[int] = None
+    # exclusive end, optional
+    end_char: Optional[int] = None
 
     class MetaData(BaseModel):
         page_start: Optional[int] = None
@@ -62,7 +64,6 @@ class Chunk(BaseModel):
     stats: Stats
 
     config_hash: str                   # helps trace what produced it
-
 
 
 DEFAULT_CHUNK_CONFIG = ChunkConfig(

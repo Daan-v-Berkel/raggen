@@ -7,7 +7,7 @@ from raggen.core.config.project import ProjectConfig
 from .metadata_schema import metadata, rag_project
 from .exceptions import SchemaMismatchError, BackendLoadError, BackendNotSupportedError
 from .plugin_loader import load_vector_backend
-from raggen.core.runtime import get_engine, set_engine
+from raggen.core.runtime import get_engine
 import json
 
 

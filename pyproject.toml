@@ -45,7 +45,11 @@ classifiers = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest"]
+dev = [
+"pytest",
+"flake8",
+"flake8-pyproject",
+]
 
 [project.urls]
 Homepage = "https://github.com/Daan-v-Berkel/raggen"
@@ -60,3 +64,8 @@ package-dir = {"" = "src"}
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.flake8]
+max-line-length = 120
+exclude = ["__pycache__", ".git", "docs", ".venv"]
+extend-ignore = ["E501"]

@@ -1,4 +1,4 @@
-from .parser import ParseResult, _normalize_line_endings, _build_canonical_text, _split_paragraphs_drop_empty, _BuiltText, Document, SourceRef
+from .parser import ParseResult, _normalize_line_endings, _build_canonical_text, _split_paragraphs_drop_empty, Document, SourceRef
 from pathlib import Path
 
 
