@@ -8,11 +8,10 @@ Status
 - Tests exist under tests/ and use pytest.
 
 Quick commands
+- Activate venv (.venv/bin/activate)
 - Install editable for local dev: pip install -e .
 - Run tests: pytest -q
 - Run CLI help (after install): rag -h
-- Reinstall (scripts): scripts/reinstall.sh (uninstalls then pip install -e .)
-- Verify environment script: scripts/verify_env.sh (creates venv, installs requirements.txt, runs tests)
 
 Project entry points
 - Console script: rag -> raggen.cli.main:main (defined in pyproject.toml)
@@ -103,7 +102,6 @@ Files checked while composing this document
 - tests/* (representative)
 
 Missing / not-found
-- README.md was not found in the repository root (pyproject references README.md as readme). If present, add it.
 - No CI configs were found in the repository root (e.g., .github/workflows) during the scan.
 
 How to approach common tasks for agents
