@@ -5,6 +5,7 @@ from typing import Optional
 
 from raggen.core.config.project import ProjectConfig
 from raggen.core.store.engine import create_engine_from_url
+from raggen.core.ingest.filegroup_utils import validate_file_groups
 from raggen.core.runtime import set_engine
 
 
@@ -17,7 +18,7 @@ class BootstrapError(RuntimeError):
 
 def bootstrap(config_path: Optional[Path] = None) -> ProjectConfig:
     """
-    Initialize global application configuration.
+    Initialize and verify global application configuration.
 
     This should be called once at application startup
 
@@ -37,6 +38,7 @@ def bootstrap(config_path: Optional[Path] = None) -> ProjectConfig:
         )
 
     cfg = ProjectConfig.load_config(path)
+    validate_file_groups(cfg)
 
     # create and register a shared engine for runtime reuse
     engine = create_engine_from_url(cfg.storage.database_url)

@@ -1,159 +1,215 @@
-from .chunks import ChunkConfig, Chunk
+from __future__ import annotations
+
+from .chunks import Chunk
 import hashlib
 import json
-from typing import List, Any
+from dataclasses import asdict
+from raggen.core.config.project import GroupChunkingConfig, ProjectConfig
+from raggen.core.ingest.filegroup_utils import build_group_chunking_map
+from typing import List, Any, Callable
+from abc import ABC, abstractmethod
+from dataclasses import dataclass
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 
-class ConfigError(ValueError):
+ParsedDocument = Any
+
+
+class ChunkingError(RuntimeError):
+    pass
+
+
+class BaseChunker(ABC):
     """
-    Raised when a ChunkConfig is structurally valid (Pydantic),
-    but semantically invalid for the Chunker (impossible combinations,
-    unsupported strategy/structure mismatches, etc.).
+    One reusable chunker instance per file group.
     """
 
-    def __init__(self, message: str, *, config: ChunkConfig | None = None):
+    def __init__(self, config: GroupChunkingConfig):
         self.config = config
-        super().__init__(message)
 
-    def __str__(self) -> str:
-        base = super().__str__()
-        if self.config is not None:
-            return f"{base}\nConfig: {self.config.model_dump()}"
-        return base
+    @abstractmethod
+    def chunk(self, doc: ParsedDocument) -> list[Chunk]:
+        raise NotImplementedError
 
 
-class Chunker:
+class StrategyChunker(BaseChunker):
+    """
+    Generic chunker that delegates to a specific strategy function.
+    """
 
-    def __init__(self, doc: Any):
-        """Chunker operates on a simple Document-like object with attributes:
-        - doc_id: str
-        - text: str
-        - source: object (e.g., SourceRef)
+    def __init__(
+        self,
+        config: GroupChunkingConfig,
+        strategy_fn: Callable[[ParsedDocument, GroupChunkingConfig], list[Chunk]],
+    ):
+        super().__init__(config)
+        self._strategy_fn = strategy_fn
+
+    def chunk(self, doc: ParsedDocument) -> list[Chunk]:
+        _validate_document(doc)
+        pieces = self._strategy_fn(doc, self.config)
+        return _enrich_chunks(doc, self.config, pieces)
+
+
+@dataclass
+class ChunkerRegistry:
+    """
+    Registry that returns one reusable chunker per file group.
+
+        chunker = registry.get("code")
+        chunks = chunker.chunk(parsed_doc)
+    """
+
+    def __init__(self):
+        cfg = ProjectConfig.get_config()
+        self.group_configs = build_group_chunking_map(cfg)
+        self.fallback_group = cfg.fallback_group
+
+    def get(self, group: str) -> BaseChunker:
         """
-        self.STRATEGIES = {
-            "fixed": self._chunk_fixed,
-            "headingAware": self._chunk_heading,
-            "paragraphMerge": self._chunk_paragraph,
-            "tokenAware": self._chunk_token,
+        Return a chunker for the given group.
+        Unknown groups resolve to the configured fallback group.
+        """
+        chunk_config = self.group_configs[group]
+
+        return self._build_chunker(chunk_config)
+
+    def _build_chunker(self, conf: GroupChunkingConfig) -> BaseChunker:
+        strategy = getattr(conf, "strategy", "fixed")
+
+        strategy_map: dict[str, Callable[[ParsedDocument, GroupChunkingConfig], list[Chunk]]] = {
+            "fixed": _chunk_fixed,
+            "headingAware": _chunk_heading,
+            "paragraphMerge": _chunk_paragraph,
+            "tokenAware": _chunk_token,
+            "ast": _chunk_ast,
         }
-        self.document = doc
 
-    def validate_config(self, conf: ChunkConfig) -> None:
-        """
-        Validate ChunkConfig in two phases:
-          1) Pydantic validation (raises pydantic.ValidationError)
-          2) "Impossible combo" validation (raises ConfigError with actionable messages)
+        if strategy not in strategy_map:
+            raise ChunkingError(f"Unknown chunking strategy: {strategy!r}")
 
-        Returns: None (validation passes)
-        """
-        try:
-            conf = ChunkConfig.model_validate(conf)
-        except Exception:
-            # Let Pydantic's own ValidationError bubble up unchanged
-            raise
+        return StrategyChunker(conf, strategy_map[strategy])
 
-        errors: List[str] = []
 
-        # Relationship constraints
-        if conf.chunk_size > 0 and conf.overlap >= conf.chunk_size:
-            errors.append(
-                f"overlap ({conf.overlap}) must be smaller than chunk_size ({conf.chunk_size})."
+def _validate_document(doc: ParsedDocument) -> None:
+    """
+    Minimal sanity check for parsed documents.
+
+    We keep this intentionally loose because the exact Document model
+    may evolve independently from chunking.
+    """
+    if doc is None:
+        raise ChunkingError("Cannot chunk a null document.")
+
+    text = getattr(doc, "text", None)
+    if text is None:
+        raise ChunkingError("Parsed document has no 'text' attribute.")
+
+    if not isinstance(text, str):
+        raise ChunkingError("Parsed document 'text' must be a string.")
+
+
+def _stable_config_hash(conf: GroupChunkingConfig) -> str:
+    """
+    Stable hash for the chunking config used to produce chunks.
+    """
+    payload = conf.to_dict()
+
+    conf_json = json.dumps(payload, sort_keys=True, ensure_ascii=False)
+    return hashlib.sha256(conf_json.encode("utf-8")).hexdigest()
+
+
+def _enrich_chunks(
+    doc: ParsedDocument,
+    conf: GroupChunkingConfig,
+    pieces: list[str],
+) -> list[Chunk]:
+    """
+    Convert raw text pieces into the project's canonical Chunk objects.
+
+    This version does not rely on char offsets.
+    """
+    # TODO:calculate cnfig_hash once per config
+    config_hash = _stable_config_hash(conf)
+    doc_id = getattr(doc, "doc_id", "unknown")
+    source = getattr(doc, "source", None)
+
+    out: List[Chunk] = []
+
+    for idx, piece in enumerate(pieces):
+        chunk_id = f"{doc_id}:{config_hash}:{idx}"
+
+        meta = {
+            "page_start": None,
+            "page_end": None,
+            "heading": None,
+            "section_path": None,
+            "source": source,
+        }
+
+        stats = {
+            "char_count": len(piece) if piece is not None else None,
+            "token_count": None,
+        }
+
+        out.append(
+            Chunk(
+                doc_id=doc_id,
+                chunk_index=idx,
+                text=piece,
+                start_char=None,
+                end_char=None,
+                metadata=meta,
+                stats=stats,
+                config_hash=config_hash,
+                chunk_id=chunk_id,
             )
-
-        if conf.min_chunk_size > 0 and conf.chunk_size > 0 and conf.min_chunk_size > conf.chunk_size:
-            errors.append(
-                f"min_chunk_size ({conf.min_chunk_size}) cannot be larger than chunk_size ({conf.chunk_size})."
-            )
-
-        # Unit/Tokenizer constraints
-        if conf.unit == "tokens" and conf.tokenizer.name == "":
-            errors.append(
-                "unit='tokens' requires a tokenizer configuration.")
-
-        if errors:
-            raise ConfigError("Invalid ChunkConfig:\n- " + "\n- ".join(errors))
-
-        return None
-
-    def _stable_config_hash(self, conf: ChunkConfig) -> str:
-        conf_json = json.dumps(
-            conf.model_dump(), sort_keys=True, ensure_ascii=False)
-        return hashlib.sha256(conf_json.encode("utf-8")).hexdigest()
-
-    def _enrich_chunks(self, conf: ChunkConfig, pieces: list[str]) -> list[Chunk]:
-        """Create Chunk objects from piece strings without relying on character offsets."""
-        config_hash = self._stable_config_hash(conf)
-
-        out: List[Chunk] = []
-        for idx, piece in enumerate(pieces):
-            chunk_id = f"{getattr(self.document, 'doc_id', 'unknown')}:{config_hash}:{idx}"
-
-            meta = {
-                "page_start": None,
-                "page_end": None,
-                "heading": None,
-                "section_path": None,
-                "source": getattr(self.document, "source", None),
-            }
-
-            stats = {
-                "char_count": len(piece) if piece is not None else None,
-                "token_count": None,
-            }
-
-            out.append(
-                Chunk(
-                    doc_id=getattr(self.document, "doc_id", "unknown"),
-                    chunk_index=idx,
-                    text=piece,
-                    start_char=None,
-                    end_char=None,
-                    metadata=meta,
-                    stats=stats,
-                    config_hash=config_hash,
-                    chunk_id=chunk_id,
-                )
-            )
-
-        return out
-
-    def chunk(self, conf: ChunkConfig) -> list[Chunk]:
-        pieces = self.STRATEGIES[conf.strategy](conf)
-        return self._enrich_chunks(conf, pieces)
-
-    def _chunk_fixed(self, conf: ChunkConfig) -> list[str]:
-        splitter = RecursiveCharacterTextSplitter(
-            chunk_size=conf.chunk_size,
-            chunk_overlap=conf.overlap,
-            separators=conf.separators,
-            keep_separator=conf.preserve_newlines,
         )
-        return splitter.split_text(getattr(self.document, "text", ""))
 
-    def _chunk_heading(self, conf: ChunkConfig) -> list[str]:
-        # Not implemented: fallback to fixed
-        return self._chunk_fixed(conf)
+    return out
+# ---------------------------------------------------------------------------
+# Strategy hooks
+# ---------------------------------------------------------------------------
 
-    def _chunk_paragraph(self, conf: ChunkConfig) -> list[str]:
-        # Simple paragraph-based chunking: split on double-newline and then apply merging
-        text = getattr(self.document, "text", "")
-        paras = text.split("\n\n") if text else []
-        out: List[str] = []
-        for p in paras:
-            if p == "":
-                continue
-            if len(p) <= conf.chunk_size:
-                out.append(p)
-            else:
-                # fallback to fixed-size slicing within paragraph
-                start = 0
-                while start < len(p):
-                    end = min(len(p), start + conf.chunk_size)
-                    out.append(p[start:end])
-                    start = max(0, end - conf.overlap)
-        return out
 
-    def _chunk_token(self, conf: ChunkConfig) -> list[str]:
-        # Token-aware chunking not implemented yet; fallback to fixed
-        return self._chunk_fixed(conf)
+def _chunk_fixed(doc: ParsedDocument, conf: GroupChunkingConfig) -> list[str]:
+    splitter = RecursiveCharacterTextSplitter(
+        chunk_size=conf.chunk_size,
+        chunk_overlap=conf.overlap,
+    )
+    return splitter.split_text(getattr(doc, "text", ""))
+
+
+def _chunk_heading(doc: ParsedDocument, conf: GroupChunkingConfig) -> list[str]:
+    # Not implemented: fallback to fixed
+    return _chunk_fixed(doc, conf)
+
+
+def _chunk_paragraph(doc: ParsedDocument, conf: GroupChunkingConfig) -> list[str]:
+    # Simple paragraph-based chunking: split on double-newline and then apply merging
+    text = getattr(doc, "text", "")
+    paras = text.split("\n\n") if text else []
+    out: List[str] = []
+    for p in paras:
+        if p == "":
+            continue
+        if len(p) <= conf.chunk_size:
+            out.append(p)
+        else:
+            # fallback to fixed-size slicing within paragraph
+            start = 0
+            while start < len(p):
+                end = min(len(p), start + conf.chunk_size)
+                out.append(p[start:end])
+                start = max(0, end - conf.overlap)
+    return out
+
+
+def _chunk_ast(doc: ParsedDocument, conf: GroupChunkingConfig) -> list[str]:
+    # Not yet implemented
+    return _chunk_fixed(doc, conf)
+
+
+def _chunk_token(doc: ParsedDocument, conf: GroupChunkingConfig) -> list[str]:
+    # Token-aware chunking not implemented yet; fallback to fixed
+    return _chunk_fixed(doc, conf)

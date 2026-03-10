@@ -158,11 +158,11 @@ def _guess_mime_type(path: Path) -> str:
 
 def _resolve_group(ext: str) -> str:
     cfg = ProjectConfig.get_config()
-    cfg_groups = cfg.chunking.file_groups
-    for group in cfg_groups:
-        if ext in group.file_extensions:
-            return group.name
-    return cfg.chunking.fallback_group
+    cfg_groups = cfg.file_groups
+    for groupname, fg in cfg_groups.items():
+        if ext in fg.extensions:
+            return groupname
+    return cfg.fallback_group
 
 
 def scan_files(
@@ -181,12 +181,15 @@ def scan_files(
     """
     root = Path(root_dir).resolve()
     ignore = GitIgnoreLike.from_ignore_files(root, ignore_filenames)
-    groups: dict[str, list[FileRef]] = {
-        "code": [],
-        "document": [],
-        "fallback": [],
-    }
-    # Use os.walk for efficient dir pruning.
+    # groups: dict[str, list[FileRef]] = {
+    #     "code": [],
+    #     "document": [],
+    #     "fallback": [],
+    # }
+
+    cfg = ProjectConfig.get_config()
+    groups = {n: [] for n in cfg.file_groups.keys()}
+
     for dirpath, dirnames, filenames in os.walk(root, followlinks=follow_symlinks):
         dpath = Path(dirpath)
         rel_dir = dpath.relative_to(root).as_posix()

@@ -15,22 +15,33 @@ class ScanConfig(TOMLDataclass):
 
 
 @dataclass
-class FileGroup(TOMLDataclass):
-    name: str
-    file_extensions: List[str]
-
-
-@dataclass
-class ChunkingConfig(TOMLDataclass):
+class GroupChunkingConfig(TOMLDataclass):
     strategy: str = "fixed"
     unit: str = "chars"
     chunk_size: int = 1200
     overlap: int = 200
-    fallback_group: str = "fallback"
-    file_groups: List[FileGroup] = field(default_factory=lambda: [
-        FileGroup(name="code", file_extensions=[".py"]),
-        FileGroup(name="document", file_extensions=[".md", ".pdf", ".txt"]),
-    ])
+
+
+@dataclass
+class FileGroupConfig(TOMLDataclass):
+    extensions: List[str] = field(default_factory=list)
+
+
+def _default_file_groups():
+    return {
+        "fallback": FileGroupConfig(extensions=[]),
+    }
+
+
+def _default_chunking():
+    return {
+        "fallback": GroupChunkingConfig(
+            strategy="fixed",
+            unit="chars",
+            chunk_size=1000,
+            overlap=100,
+        ),
+    }
 
 
 @dataclass
@@ -74,7 +85,13 @@ class ProjectConfig(ConfigDataclass, TOMLDataclass):
     project_root: Path = Path('.')
     schema_version: str = "v1"
     scan: ScanConfig = field(default_factory=ScanConfig)
-    chunking: ChunkingConfig = field(default_factory=ChunkingConfig)
+    file_groups: dict[str, FileGroupConfig] = field(
+        default_factory=_default_file_groups
+    )
+    chunking: dict[str, GroupChunkingConfig] = field(
+        default_factory=_default_chunking
+    )
+    fallback_group: str = "fallback"
     embedding: EmbeddingConfig = field(default_factory=EmbeddingConfig)
     storage: StorageConfig = field(default_factory=StorageConfig)
     query: QueryConfig = field(default_factory=QueryConfig)

@@ -50,14 +50,6 @@ def run_init(
     extra = input("Additional ignore globs (comma-separated) []: ").strip()
     if extra:
         cfg.scan.ignore = [s.strip() for s in extra.split(',') if s.strip()]
-    # chunking
-    ch_size = input(f"Chunk size [{cfg.chunking.chunk_size}]: ").strip()
-    if ch_size:
-        cfg.chunking.chunk_size = int(ch_size)
-    ch_overlap = input(f"Chunk overlap [{cfg.chunking.overlap}]: ").strip()
-    if ch_overlap:
-        cfg.chunking.overlap = int(ch_overlap)
-    # embedding
     emb_model = input(
         f"Embedding model id [{cfg.embedding.model_id}]: ").strip()
     if emb_model:

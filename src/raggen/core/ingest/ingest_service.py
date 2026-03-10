@@ -7,8 +7,8 @@ from raggen.core.ingest.logging import log_stage, log_error, logger
 from raggen.core.ingest.gating import should_ingest_raw_bytes, should_ingest_parsed_document, should_ingest_changed_file
 from raggen.core.parsing.parser import ParserRegistry, ParseInput, ParserService
 from raggen.core.parsing.PlainTextParser import PlainTextFallbackParser
-from raggen.core.chunking.chunks import DEFAULT_CHUNK_CONFIG
-from raggen.core.chunking.chunker import Chunker
+from raggen.core.chunking.chunks import Chunk
+from raggen.core.chunking.chunker import ChunkerRegistry
 from raggen.core.embeddings.embedder import LocalSentenceTransformerEmbedder, embed_chunks
 from raggen.core.store import init_database, store_document_bundle, delete_documents
 from raggen.core.store.metadata_store import fetch_all_document_ids
@@ -42,11 +42,13 @@ def do_ingest(destructive: bool = False) -> Dict[str, Any]:
     scanned = scan_files(
         cfg.project_root, ignore_filenames=cfg.scan.ignore_files)
 
+    chunk_registry = ChunkerRegistry()
+
     for group, file_refs in scanned.groups.items():
         if not file_refs:
             continue
 
-        # TODO:hook up future chunker_registry.get(group)
+        chunker = chunk_registry.get(group)
 
         for fr in file_refs:
             current_files.add(fr.relative_path)
@@ -88,9 +90,7 @@ def do_ingest(destructive: bool = False) -> Dict[str, Any]:
                     warnings_agg['empty_text_after_parse'] = warnings_agg.get(
                         'empty_text_after_parse', 0) + 1
                     continue
-                chunker = Chunker(doc)
-                # TODO:substitute for new chunking based on groups
-                chunks = chunker.chunk(DEFAULT_CHUNK_CONFIG)
+                chunks = chunker.chunk(doc)
                 # embed
                 em_results = embed_chunks(
                     embedder, chunks, batch_size=cfg.embedding.batch_size, normalize=cfg.embedding.normalize)
@@ -120,7 +120,7 @@ def do_ingest(destructive: bool = False) -> Dict[str, Any]:
                         'end_offset': getattr(ch, 'end_offset', len(ch.text)) or len(ch.text),
                         'page_number': getattr(ch, 'page_number', None),
                         'heading_path_json': getattr(ch, 'heading_path_json', None),
-                        'chunk_config_hash': cfg.chunking.chunk_size or '',
+                        'chunk_config_hash': ch.config_hash,
                         'created_at': '',
                     })
                     embedding_meta_rows.append({
