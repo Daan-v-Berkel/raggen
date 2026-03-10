@@ -3,7 +3,7 @@ import numpy as np
 
 from raggen.core.config.project import default_project_config
 from raggen.core.parsing.parser import ParserService
-from raggen.core.chunking.chunker import Chunker
+from raggen.core.chunking.chunker import ChunkerRegistry
 from raggen.core.ingest import do_ingest
 
 
@@ -103,7 +103,8 @@ def test_empty_parsed_document_is_skipped(tmp_path, monkeypatch):
     def _fail_chunk(self, conf):
         raise AssertionError(
             "chunker should not be called for empty parsed document")
-    monkeypatch.setattr(Chunker, "chunk", _fail_chunk)
+    chunker = ChunkerRegistry().get("fallback")
+    monkeypatch.setattr(chunker, "chunk", _fail_chunk)
 
     stats = do_ingest()
     assert stats["skip_reasons"].get("empty_text_after_parse", 0) == 1
@@ -147,7 +148,8 @@ def test_whitespace_only_file_is_skipped(tmp_path, monkeypatch):
         return SimpleNamespace(document=doc)
     monkeypatch.setattr(ParserService, "parse_document", _ws_parse)
 
-    monkeypatch.setattr(Chunker, "chunk", lambda self, conf: (
+    chunker = ChunkerRegistry().get("fallback")
+    monkeypatch.setattr(chunker, "chunk", lambda self, conf: (
         _ for _ in ()).throw(AssertionError("chunker should not be called")))
 
     stats = do_ingest()

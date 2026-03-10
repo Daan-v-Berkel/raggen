@@ -5,7 +5,7 @@ from typing import Optional
 
 from raggen.core.config.project import ProjectConfig
 from raggen.core.store.engine import create_engine_from_url
-from raggen.core.ingest.filegroup_utils import validate_file_groups
+from raggen.core.config.config_utils import validate_file_groups
 from raggen.core.runtime import set_engine
 
 

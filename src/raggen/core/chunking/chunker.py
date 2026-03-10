@@ -3,16 +3,12 @@ from __future__ import annotations
 from .chunks import Chunk
 import hashlib
 import json
-from dataclasses import asdict
 from raggen.core.config.project import GroupChunkingConfig, ProjectConfig
-from raggen.core.ingest.filegroup_utils import build_group_chunking_map
-from typing import List, Any, Callable
+from raggen.core.parsing.parser import Document
+from typing import List, Callable
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from langchain_text_splitters import RecursiveCharacterTextSplitter
-
-
-ParsedDocument = Any
 
 
 class ChunkingError(RuntimeError):
@@ -28,7 +24,7 @@ class BaseChunker(ABC):
         self.config = config
 
     @abstractmethod
-    def chunk(self, doc: ParsedDocument) -> list[Chunk]:
+    def chunk(self, doc: Document) -> list[Chunk]:
         raise NotImplementedError
 
 
@@ -40,12 +36,12 @@ class StrategyChunker(BaseChunker):
     def __init__(
         self,
         config: GroupChunkingConfig,
-        strategy_fn: Callable[[ParsedDocument, GroupChunkingConfig], list[Chunk]],
+        strategy_fn: Callable[[Document, GroupChunkingConfig], list[Chunk]],
     ):
         super().__init__(config)
         self._strategy_fn = strategy_fn
 
-    def chunk(self, doc: ParsedDocument) -> list[Chunk]:
+    def chunk(self, doc: Document) -> list[Chunk]:
         _validate_document(doc)
         pieces = self._strategy_fn(doc, self.config)
         return _enrich_chunks(doc, self.config, pieces)
@@ -62,7 +58,7 @@ class ChunkerRegistry:
 
     def __init__(self):
         cfg = ProjectConfig.get_config()
-        self.group_configs = build_group_chunking_map(cfg)
+        self.group_configs = cfg.chunking
         self.fallback_group = cfg.fallback_group
 
     def get(self, group: str) -> BaseChunker:
@@ -77,7 +73,7 @@ class ChunkerRegistry:
     def _build_chunker(self, conf: GroupChunkingConfig) -> BaseChunker:
         strategy = getattr(conf, "strategy", "fixed")
 
-        strategy_map: dict[str, Callable[[ParsedDocument, GroupChunkingConfig], list[Chunk]]] = {
+        strategy_map: dict[str, Callable[[Document, GroupChunkingConfig], list[Chunk]]] = {
             "fixed": _chunk_fixed,
             "headingAware": _chunk_heading,
             "paragraphMerge": _chunk_paragraph,
@@ -91,7 +87,7 @@ class ChunkerRegistry:
         return StrategyChunker(conf, strategy_map[strategy])
 
 
-def _validate_document(doc: ParsedDocument) -> None:
+def _validate_document(doc: Document) -> None:
     """
     Minimal sanity check for parsed documents.
 
@@ -120,7 +116,7 @@ def _stable_config_hash(conf: GroupChunkingConfig) -> str:
 
 
 def _enrich_chunks(
-    doc: ParsedDocument,
+    doc: Document,
     conf: GroupChunkingConfig,
     pieces: list[str],
 ) -> list[Chunk]:
@@ -172,7 +168,7 @@ def _enrich_chunks(
 # ---------------------------------------------------------------------------
 
 
-def _chunk_fixed(doc: ParsedDocument, conf: GroupChunkingConfig) -> list[str]:
+def _chunk_fixed(doc: Document, conf: GroupChunkingConfig) -> list[str]:
     splitter = RecursiveCharacterTextSplitter(
         chunk_size=conf.chunk_size,
         chunk_overlap=conf.overlap,
@@ -180,12 +176,12 @@ def _chunk_fixed(doc: ParsedDocument, conf: GroupChunkingConfig) -> list[str]:
     return splitter.split_text(getattr(doc, "text", ""))
 
 
-def _chunk_heading(doc: ParsedDocument, conf: GroupChunkingConfig) -> list[str]:
+def _chunk_heading(doc: Document, conf: GroupChunkingConfig) -> list[str]:
     # Not implemented: fallback to fixed
     return _chunk_fixed(doc, conf)
 
 
-def _chunk_paragraph(doc: ParsedDocument, conf: GroupChunkingConfig) -> list[str]:
+def _chunk_paragraph(doc: Document, conf: GroupChunkingConfig) -> list[str]:
     # Simple paragraph-based chunking: split on double-newline and then apply merging
     text = getattr(doc, "text", "")
     paras = text.split("\n\n") if text else []
@@ -205,11 +201,11 @@ def _chunk_paragraph(doc: ParsedDocument, conf: GroupChunkingConfig) -> list[str
     return out
 
 
-def _chunk_ast(doc: ParsedDocument, conf: GroupChunkingConfig) -> list[str]:
+def _chunk_ast(doc: Document, conf: GroupChunkingConfig) -> list[str]:
     # Not yet implemented
     return _chunk_fixed(doc, conf)
 
 
-def _chunk_token(doc: ParsedDocument, conf: GroupChunkingConfig) -> list[str]:
+def _chunk_token(doc: Document, conf: GroupChunkingConfig) -> list[str]:
     # Token-aware chunking not implemented yet; fallback to fixed
     return _chunk_fixed(doc, conf)

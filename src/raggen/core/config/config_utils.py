@@ -1,11 +1,8 @@
 from __future__ import annotations
 
-from typing import Dict, Tuple
+from typing import Dict
 
-from raggen.core.config.project import (
-    ProjectConfig,
-    GroupChunkingConfig,
-)
+from raggen.core.config.project import ProjectConfig
 
 
 class ConfigValidationError(ValueError):
@@ -20,17 +17,15 @@ def normalize_extension(ext: str) -> str:
     - strip surrounding whitespace
     - lowercase
     - ensure leading '.'
-    - reject empty values
+    - reject empty values ('' or '.')
     """
     ext = ext.strip().lower()
-    if not ext:
+    if not ext or ext == '.':
         raise ConfigValidationError("Empty file extension is not allowed.")
 
     if not ext.startswith("."):
         ext = f".{ext}"
 
-    if ext == ".":
-        raise ConfigValidationError("Invalid file extension '.'.")
     return ext
 
 
@@ -96,27 +91,3 @@ def build_extension_group_map(cfg: ProjectConfig) -> Dict[str, str]:
             ext_to_group[ext] = group_name
 
     return ext_to_group
-
-
-def build_group_chunking_map(cfg: ProjectConfig) -> Dict[str, GroupChunkingConfig]:
-    """
-    Build group -> chunking config lookup.
-
-    Assumes config has already been validated.
-    """
-    return dict(cfg.chunking)
-
-
-def build_filegroup_runtime_maps(
-    cfg: ProjectConfig,
-) -> Tuple[Dict[str, str], Dict[str, GroupChunkingConfig]]:
-    """
-    Validate config and derive both runtime lookup maps:
-
-    - extension -> group
-    - group -> chunking config
-    """
-    validate_file_groups(cfg)
-    ext_to_group = build_extension_group_map(cfg)
-    group_to_chunking = build_group_chunking_map(cfg)
-    return ext_to_group, group_to_chunking

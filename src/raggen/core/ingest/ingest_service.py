@@ -7,7 +7,6 @@ from raggen.core.ingest.logging import log_stage, log_error, logger
 from raggen.core.ingest.gating import should_ingest_raw_bytes, should_ingest_parsed_document, should_ingest_changed_file
 from raggen.core.parsing.parser import ParserRegistry, ParseInput, ParserService
 from raggen.core.parsing.PlainTextParser import PlainTextFallbackParser
-from raggen.core.chunking.chunks import Chunk
 from raggen.core.chunking.chunker import ChunkerRegistry
 from raggen.core.embeddings.embedder import LocalSentenceTransformerEmbedder, embed_chunks
 from raggen.core.store import init_database, store_document_bundle, delete_documents
