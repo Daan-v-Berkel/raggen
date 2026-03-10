@@ -12,11 +12,11 @@ from raggen.core.config.project import ProjectConfig
 
 @dataclass(frozen=True)
 class FileRef:
-    path: str           # absolute path
+    path: str  # absolute path
     relative_path: str  # relative to root, posix-style
     file_size: int
     mtime: int
-    content_hash: str   # sha256 hex digest
+    content_hash: str  # sha256 hex digest
     mime_type: str
 
 
@@ -57,11 +57,13 @@ class GitIgnoreLike:
     def from_ignore_files(root, ignore_files: List[Path]) -> "GitIgnoreLike":
         rules: list[_Rule] = []
         for file in ignore_files:
-            ignore_file = (root / file)
+            ignore_file = root / file
             if not ignore_file.exists():
                 return GitIgnoreLike(rules)
 
-            for raw in ignore_file.read_text(encoding="utf-8", errors="replace").splitlines():
+            for raw in ignore_file.read_text(
+                encoding="utf-8", errors="replace"
+            ).splitlines():
                 line = raw.strip("\n\r")
                 if not line or line.lstrip().startswith("#"):
                     continue
@@ -88,8 +90,14 @@ class GitIgnoreLike:
 
                 # normalize to posix-ish matching
                 pattern = line.replace(os.sep, "/")
-                rules.append(_Rule(pattern=pattern, negated=negated,
-                             dir_only=dir_only, anchored=anchored))
+                rules.append(
+                    _Rule(
+                        pattern=pattern,
+                        negated=negated,
+                        dir_only=dir_only,
+                        anchored=anchored,
+                    )
+                )
 
         return GitIgnoreLike(rules)
 
@@ -126,18 +134,26 @@ class GitIgnoreLike:
         # - if pattern contains '/', match against full rel path (anywhere)
         # - else match against basename and any segment
         if "/" in rule.pattern:
-            return any(self._fnmatch_posix(c, f"**/{rule.pattern}") or self._fnmatch_posix(c, rule.pattern) for c in candidates)
+            return any(
+                self._fnmatch_posix(c, f"**/{rule.pattern}")
+                or self._fnmatch_posix(c, rule.pattern)
+                for c in candidates
+            )
 
         # no slash: match basename OR any segment
         parts = rel_path.split("/")
-        return any(fnmatch.fnmatchcase(p, rule.pattern) for p in parts) or fnmatch.fnmatchcase(parts[-1], rule.pattern)
+        return any(
+            fnmatch.fnmatchcase(p, rule.pattern) for p in parts
+        ) or fnmatch.fnmatchcase(parts[-1], rule.pattern)
 
     @staticmethod
     def _fnmatch_posix(path: str, pat: str) -> bool:
         # A small helper to make ** behave reasonably with fnmatch.
         # fnmatch supports '*' matching slashes on most platforms in Python's implementation.
         # We just use fnmatchcase on posix strings.
-        return fnmatch.fnmatchcase(path, pat) or fnmatch.fnmatchcase(path, pat.rstrip("/"))
+        return fnmatch.fnmatchcase(path, pat) or fnmatch.fnmatchcase(
+            path, pat.rstrip("/")
+        )
 
 
 def _sha256_file(path: Path, chunk_size: int = 1024 * 1024) -> str:
@@ -199,7 +215,7 @@ def scan_files(
         # prune dirs based on ignore rules
         kept_dirnames: list[str] = []
         for dn in dirnames:
-            if dn == '.rag':
+            if dn == ".rag":
                 continue
             if not include_hidden and dn.startswith("."):
                 continue

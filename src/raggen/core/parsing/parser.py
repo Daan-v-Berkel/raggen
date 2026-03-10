@@ -28,9 +28,10 @@ class ParseResult(BaseModel):
     Wrapper so the pipeline can introspect how parsing happened.
     document: Document produced by the parser
     """
+
     document: Document
-    parser_id: str                # e.g. "docx:v1", "plaintext:v1"
-    effective_mimetype: str       # after normalization/fallback selection
+    parser_id: str  # e.g. "docx:v1", "plaintext:v1"
+    effective_mimetype: str  # after normalization/fallback selection
 
 
 class Parser(Protocol):
@@ -46,8 +47,9 @@ class UnsupportedDocumentError(ValueError):
 
 
 class ParserRegistry:
-    def __init__(self, fallback_parser, parsers_by_mime: dict[str, "Parser"] | None
-                 = None):
+    def __init__(
+        self, fallback_parser, parsers_by_mime: dict[str, "Parser"] | None = None
+    ):
         self.parsers_by_mime = parsers_by_mime or {}
         self.fallback_parser = fallback_parser
 

@@ -27,8 +27,7 @@ class SQLiteVecBackend(VectorBackend):
         Uses the official python package if installed. This is the recommended path.
         """
         # Get the raw sqlite3 connection from SQLAlchemy
-        raw = getattr(conn.connection, "driver_connection",
-                      None) or conn.connection
+        raw = getattr(conn.connection, "driver_connection", None) or conn.connection
 
         try:
             import sqlite_vec  # type: ignore
@@ -70,22 +69,18 @@ class SQLiteVecBackend(VectorBackend):
             self._ensure_vec_loaded(conn)
 
             # Mapping table (normal SQLite table)
-            conn.exec_driver_sql(
-                """
+            conn.exec_driver_sql("""
                 CREATE TABLE IF NOT EXISTS chunk_vectors_map (
                     id INTEGER PRIMARY KEY,
                     chunk_id TEXT NOT NULL UNIQUE
                 )
-                """
-            )
+                """)
 
             # Vec virtual table (only embedding; rowid used as key)
-            conn.exec_driver_sql(
-                f"""
+            conn.exec_driver_sql(f"""
                 CREATE VIRTUAL TABLE IF NOT EXISTS chunk_vectors
                 USING vec0(embedding float[{dim}])
-                """
-            )
+                """)
 
     def drop_schema(self, engine: Engine) -> None:
         with engine.begin() as conn:
@@ -105,15 +100,14 @@ class SQLiteVecBackend(VectorBackend):
         vectors: List[Tuple[str, List[float]]],
         embedding_model_id: str,  # not used by sqlite-vec table; metadata lives elsewhere
         dim: int,
-        normalized: bool,         # not used here; metadata lives elsewhere
+        normalized: bool,  # not used here; metadata lives elsewhere
     ) -> None:
         if not vectors:
             return
 
         for cid, vec in vectors:
             if len(vec) != dim:
-                raise ValueError(
-                    f"Vector for {cid} has length {len(vec)} != {dim}")
+                raise ValueError(f"Vector for {cid} has length {len(vec)} != {dim}")
 
         def _do(conn: Connection) -> None:
             self._ensure_vec_loaded(conn)
@@ -146,10 +140,8 @@ class SQLiteVecBackend(VectorBackend):
             for chunk_id, vec in vectors:
                 # Ensure mapping exists
                 conn.execute(insert_map, {"chunk_id": chunk_id})
-                rowid = conn.execute(
-                    select_id, {"chunk_id": chunk_id}).scalar_one()
-                params = {"rowid": int(
-                    rowid), "embedding": _serialize_f32(vec)}
+                rowid = conn.execute(select_id, {"chunk_id": chunk_id}).scalar_one()
+                params = {"rowid": int(rowid), "embedding": _serialize_f32(vec)}
 
                 # Try update first
                 res = conn.execute(update_vec, params)
@@ -183,13 +175,11 @@ class SQLiteVecBackend(VectorBackend):
             self._ensure_vec_loaded(conn)
 
             # Get rowids for chunk_ids
-            ids_stmt = text(
-                """
+            ids_stmt = text("""
                 SELECT id
                 FROM chunk_vectors_map
                 WHERE chunk_id IN :chunk_ids
-                """
-            ).bindparams(bindparam("chunk_ids", expanding=True))
+                """).bindparams(bindparam("chunk_ids", expanding=True))
 
             rowids = list(conn.scalars(ids_stmt, {"chunk_ids": chunks}))
             if rowids:

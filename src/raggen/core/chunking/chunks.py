@@ -1,8 +1,7 @@
 from pydantic import BaseModel, NonNegativeInt
 from typing import Literal, Optional, List
 
-ChunkStrategy = Literal["fixed", "headingAware",
-                        "paragraphMerge", "tokenAware"]
+ChunkStrategy = Literal["fixed", "headingAware", "paragraphMerge", "tokenAware"]
 Unit = Literal["chars", "tokens"]
 
 
@@ -32,4 +31,4 @@ class Chunk(BaseModel):
 
     stats: Stats
 
-    config_hash: str                   # helps trace what produced it
+    config_hash: str  # helps trace what produced it

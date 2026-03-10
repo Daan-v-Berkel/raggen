@@ -47,7 +47,8 @@ def should_ingest_changed_file(fr: FileRef, cfg: ProjectConfig) -> bool:
     engine = get_engine()
     conn = engine.connect()
     sel = select(documents.c.doc_id, documents.c.byte_size, documents.c.mtime_ns).where(
-        documents.c.doc_id == fr.relative_path)
+        documents.c.doc_id == fr.relative_path
+    )
     res = conn.execute(sel).fetchone()
     conn.close()
 

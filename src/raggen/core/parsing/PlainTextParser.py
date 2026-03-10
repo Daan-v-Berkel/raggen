@@ -1,4 +1,11 @@
-from .parser import ParseResult, _normalize_line_endings, _build_canonical_text, _split_paragraphs_drop_empty,  Document, SourceRef
+from .parser import (
+    ParseResult,
+    _normalize_line_endings,
+    _build_canonical_text,
+    _split_paragraphs_drop_empty,
+    Document,
+    SourceRef,
+)
 from pathlib import Path
 
 
@@ -11,6 +18,7 @@ class PlainTextFallbackParser:
     - Headings: none (v1)
     - Pages: single page spanning whole text (v1)
     """
+
     parser_id: str = "plaintext:v1"
     supported_mimetypes: set[str] = {"text/plain", "application/octet-stream"}
 
@@ -25,8 +33,11 @@ class PlainTextFallbackParser:
         built = _build_canonical_text(paragraphs)
 
         # Build Document with simple SourceRef
-        src = SourceRef(scheme="file", rel_path=getattr(inp, "filename", None) or inp.doc_id,
-                        display_name=Path(getattr(inp, "filename", inp.doc_id)).name)
+        src = SourceRef(
+            scheme="file",
+            rel_path=getattr(inp, "filename", None) or inp.doc_id,
+            display_name=Path(getattr(inp, "filename", inp.doc_id)).name,
+        )
 
         doc = Document(
             doc_id=inp.doc_id,
@@ -34,7 +45,9 @@ class PlainTextFallbackParser:
             source=src,
         )
 
-        effective = "text/plain" if inp.mimetype == "application/octet-stream" else inp.mimetype
+        effective = (
+            "text/plain" if inp.mimetype == "application/octet-stream" else inp.mimetype
+        )
 
         return ParseResult(
             document=doc,

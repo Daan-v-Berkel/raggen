@@ -7,6 +7,7 @@ from raggen.core.query.models import RetrievedChunk
 
 class GenerationNotImplementedError(NotImplementedError):
     """Raised when generation is requested but no provider is implemented."""
+
     pass
 
 

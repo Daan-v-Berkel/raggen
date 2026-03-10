@@ -38,8 +38,7 @@ class TestingVectorBackend(VectorBackend):
             return
         for cid, vec in vectors:
             if len(vec) != dim:
-                raise ValueError(
-                    f"Vector for {cid} has length {len(vec)} != {dim}")
+                raise ValueError(f"Vector for {cid} has length {len(vec)} != {dim}")
 
         def vec_to_str(v: List[float]) -> str:
             return "[" + ",".join(f"{float(x):.6f}" for x in v) + "]"
@@ -52,10 +51,13 @@ class TestingVectorBackend(VectorBackend):
         from sqlalchemy.engine import Connection, Engine
 
         def _do(conn):
-            conn.execute(stmt, [
-                {"chunk_id": cid, "embedding_json": vec_to_str(vec)}
-                for cid, vec in vectors
-            ])
+            conn.execute(
+                stmt,
+                [
+                    {"chunk_id": cid, "embedding_json": vec_to_str(vec)}
+                    for cid, vec in vectors
+                ],
+            )
 
         if isinstance(engine_or_conn, Connection):
             _do(engine_or_conn)

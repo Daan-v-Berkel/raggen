@@ -47,8 +47,7 @@ class PgVectorBackend(VectorBackend):
         # validate dims
         for cid, vec in vectors:
             if len(vec) != dim:
-                raise ValueError(
-                    f"Vector for {cid} has length {len(vec)} != {dim}")
+                raise ValueError(f"Vector for {cid} has length {len(vec)} != {dim}")
         # Insert using parameterized query; use string form for vector literal
 
         def _do_upsert(conn):
@@ -59,10 +58,18 @@ class PgVectorBackend(VectorBackend):
             )
             for cid, vec in vectors:
                 vec_str = "[" + ",".join(str(float(x)) for x in vec) + "]"
-                conn.execute(stmt, {"chunk_id": cid, "vec": vec_str,
-                             "model": embedding_model_id, "norm": normalized})
+                conn.execute(
+                    stmt,
+                    {
+                        "chunk_id": cid,
+                        "vec": vec_str,
+                        "model": embedding_model_id,
+                        "norm": normalized,
+                    },
+                )
 
         from sqlalchemy.engine import Connection, Engine
+
         if isinstance(engine_or_conn, Connection):
             _do_upsert(engine_or_conn)
         elif isinstance(engine_or_conn, Engine):
@@ -83,9 +90,7 @@ class PgVectorBackend(VectorBackend):
         stmt = text("""
             DELETE FROM chunk_vectors
             WHERE chunk_id IN :chunk_ids
-        """).bindparams(
-            bindparam("chunk_ids", expanding=True)
-        )
+        """).bindparams(bindparam("chunk_ids", expanding=True))
 
         with engine.begin() as conn:
             conn.execute(stmt, {"chunk_ids": chunks})

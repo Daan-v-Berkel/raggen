@@ -73,7 +73,9 @@ class ChunkerRegistry:
     def _build_chunker(self, conf: GroupChunkingConfig) -> BaseChunker:
         strategy = getattr(conf, "strategy", "fixed")
 
-        strategy_map: dict[str, Callable[[Document, GroupChunkingConfig], list[Chunk]]] = {
+        strategy_map: dict[
+            str, Callable[[Document, GroupChunkingConfig], list[Chunk]]
+        ] = {
             "fixed": _chunk_fixed,
             "headingAware": _chunk_heading,
             "paragraphMerge": _chunk_paragraph,
@@ -163,6 +165,8 @@ def _enrich_chunks(
         )
 
     return out
+
+
 # ---------------------------------------------------------------------------
 # Strategy hooks
 # ---------------------------------------------------------------------------

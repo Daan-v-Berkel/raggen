@@ -1,7 +1,11 @@
 from __future__ import annotations
 
 import argparse
-from raggen.cli.commands import init as init_cmd, ingest as ingest_cmd, query as query_cmd
+from raggen.cli.commands import (
+    init as init_cmd,
+    ingest as ingest_cmd,
+    query as query_cmd,
+)
 
 
 def main(argv=None):
@@ -26,10 +30,10 @@ def main(argv=None):
 
     if args.command == "init":
         init_cmd.run_init(
-            root=args.root, non_interactive=args.non_interactive, force=args.force)
+            root=args.root, non_interactive=args.non_interactive, force=args.force
+        )
     elif args.command == "ingest":
-        ingest_cmd.run_ingest(config_path=args.config,
-                              destructive=args.destructive)
+        ingest_cmd.run_ingest(config_path=args.config, destructive=args.destructive)
     elif args.command == "query":
         return query_cmd.run_query(
             args.text,

@@ -13,9 +13,9 @@ def get_logger(name: str = "rag-engine"):
         return logger
     logger.setLevel(logging.DEBUG)
     handler = RotatingFileHandler(
-        str(LOG_FILE), maxBytes=5 * 1024 * 1024, backupCount=5)
-    formatter = logging.Formatter(
-        "%(asctime)s %(levelname)s [%(name)s] %(message)s")
+        str(LOG_FILE), maxBytes=5 * 1024 * 1024, backupCount=5
+    )
+    formatter = logging.Formatter("%(asctime)s %(levelname)s [%(name)s] %(message)s")
     handler.setFormatter(formatter)
     logger.addHandler(handler)
     stream = logging.StreamHandler()

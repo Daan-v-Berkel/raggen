@@ -19,21 +19,22 @@ class MetadataStore:
             return
         upsert_rows(conn, chunks, rows, ["chunk_id"])
 
-    def upsert_embedding_meta(self, conn: Connection, rows: List[Dict[str, Any]]) -> None:
+    def upsert_embedding_meta(
+        self, conn: Connection, rows: List[Dict[str, Any]]
+    ) -> None:
         if not rows:
             return
         upsert_rows(conn, embeddings, rows, ["chunk_id"])
 
     def fetch_all_chunk_ids(self, conn: Connection, doc_ids: List[str]) -> List[str]:
         chunk_ids = list(
-            conn.scalars(
-                select(chunks.c.chunk_id).where(
-                    chunks.c.doc_id.in_(doc_ids))
-            )
+            conn.scalars(select(chunks.c.chunk_id).where(chunks.c.doc_id.in_(doc_ids)))
         )
         return chunk_ids
 
-    def fetch_chunks_by_ids(self, conn: Connection, chunk_ids: list[str]) -> list[dict[str, Any]]:
+    def fetch_chunks_by_ids(
+        self, conn: Connection, chunk_ids: list[str]
+    ) -> list[dict[str, Any]]:
         """
         Fetch chunk rows for the given chunk_ids.
 
@@ -93,7 +94,9 @@ class MetadataStore:
         conn.execute(stmt)
 
 
-def upsert_rows(conn: Connection, table, rows: List[Dict[str, Any]], pk_cols: List[str]) -> None:
+def upsert_rows(
+    conn: Connection, table, rows: List[Dict[str, Any]], pk_cols: List[str]
+) -> None:
     """Portable upsert: delete existing PKs then insert all rows in same transaction."""
     if not rows:
         return

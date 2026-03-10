@@ -69,10 +69,13 @@ def validate_existing_project(engine: Engine, cfg: ProjectConfig) -> None:
     stored_vbi = stored_notes.get("vector_backend_import")
     if stored_vbi and stored_vbi != cfg.storage.vector_backend_import:
         diffs["vector_backend_import"] = {
-            "stored": stored_vbi, "expected": cfg.storage.vector_backend_import}
+            "stored": stored_vbi,
+            "expected": cfg.storage.vector_backend_import,
+        }
     if diffs:
         raise SchemaMismatchError(
-            f"Stored project configuration differs: {json.dumps(diffs, indent=2)}\nRun with destructive=True to reinitialize.")
+            f"Stored project configuration differs: {json.dumps(diffs, indent=2)}\nRun with destructive=True to reinitialize."
+        )
 
 
 def init_database(cfg: ProjectConfig, *, destructive: bool = False) -> Engine:
@@ -103,24 +106,29 @@ def init_database(cfg: ProjectConfig, *, destructive: bool = False) -> Engine:
     import_path = cfg.storage.vector_backend_import
     if not import_path:
         if cfg.storage.backend_key == "sqlite_vec":
-            import_path = "raggen.core.store.vector_backends.sqlite_vec:SQLiteVecBackend"
+            import_path = (
+                "raggen.core.store.vector_backends.sqlite_vec:SQLiteVecBackend"
+            )
         elif cfg.storage.backend_key == "pgvector":
             import_path = "raggen.core.store.vector_backends.pgvector:PgVectorBackend"
         else:
             raise BackendLoadError(
-                f"No vector_backend_import provided and unknown backend_key '{cfg.storage.backend_key}'")
+                f"No vector_backend_import provided and unknown backend_key '{cfg.storage.backend_key}'"
+            )
 
     # load vector backend
     try:
         backend = load_vector_backend(import_path)
     except Exception as exc:
         raise BackendLoadError(
-            f"Failed to load vector backend '{import_path}': {exc}") from exc
+            f"Failed to load vector backend '{import_path}': {exc}"
+        ) from exc
 
     # ensure backend supports this engine
     if not backend.supports(engine):
         raise BackendNotSupportedError(
-            f"Backend '{backend.key}' does not support engine dialect '{engine.dialect.name}'")
+            f"Backend '{backend.key}' does not support engine dialect '{engine.dialect.name}'"
+        )
 
     # Check existing project row BEFORE creating vector schema to avoid backend-side limits
     conn = engine.connect()
@@ -138,7 +146,8 @@ def init_database(cfg: ProjectConfig, *, destructive: bool = False) -> Engine:
         conn.close()
         if diffs:
             raise SchemaMismatchError(
-                f"Stored project configuration differs: {json.dumps(diffs, indent=2)}\nRun with destructive=True to reinitialize.")
+                f"Stored project configuration differs: {json.dumps(diffs, indent=2)}\nRun with destructive=True to reinitialize."
+            )
     else:
         # If destructive, drop vector schema first (safer) then drop metadata
         conn.close()

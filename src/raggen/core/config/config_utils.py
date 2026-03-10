@@ -20,7 +20,7 @@ def normalize_extension(ext: str) -> str:
     - reject empty values ('' or '.')
     """
     ext = ext.strip().lower()
-    if not ext or ext == '.':
+    if not ext or ext == ".":
         raise ConfigValidationError("Empty file extension is not allowed.")
 
     if not ext.startswith("."):

@@ -5,7 +5,9 @@ from raggen.core.bootstrap import bootstrap
 from raggen.core.ingest.ingest_service import do_ingest
 
 
-def run_ingest(*, config_path: str = '.rag/config.toml', destructive: bool = False) -> None:
+def run_ingest(
+    *, config_path: str = ".rag/config.toml", destructive: bool = False
+) -> None:
     cfg_path = Path(config_path)
     if not cfg_path.exists():
         print(f"Config not found at {cfg_path}")

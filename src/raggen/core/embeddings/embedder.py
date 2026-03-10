@@ -102,7 +102,8 @@ def embed_chunks(
     # 2) Embed missing in batches
     if missing_texts:
         matrix = embedder.embed_texts(
-            missing_texts, batch_size=batch_size, normalize=normalize)
+            missing_texts, batch_size=batch_size, normalize=normalize
+        )
         if matrix.shape[0] != len(missing_ids):
             raise RuntimeError("Embedding output row count mismatch.")
 
