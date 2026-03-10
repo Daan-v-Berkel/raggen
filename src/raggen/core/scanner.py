@@ -6,7 +6,8 @@ import mimetypes
 import os
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterable, Iterator, List
+from typing import Iterable, List
+from raggen.core.config.project import ProjectConfig
 
 
 @dataclass(frozen=True)
@@ -17,6 +18,11 @@ class FileRef:
     mtime: int
     content_hash: str   # sha256 hex digest
     mime_type: str
+
+
+@dataclass
+class ScanResult:
+    groups: dict[str, list[FileRef]]
 
 
 @dataclass(frozen=True)
@@ -150,13 +156,21 @@ def _guess_mime_type(path: Path) -> str:
     return mt or "application/octet-stream"
 
 
+def _resolve_group(ext: str) -> str:
+    cfg_groups = ProjectConfig.get_config().chunking.file_groups
+    for group in cfg_groups:
+        if ext in group.file_extensions:
+            return group.name
+    return "fallback"
+
+
 def scan_files(
     root_dir: str | Path,
     *,
     ignore_filenames: List[str],
     follow_symlinks: bool = False,
     include_hidden: bool = True,
-) -> Iterator[FileRef]:
+) -> ScanResult:
     """
     Recursively scan from root_dir and yield FileRef for each file encountered,
     respecting ignore rules from <root_dir>/<ignore_filename>.
@@ -166,7 +180,11 @@ def scan_files(
     """
     root = Path(root_dir).resolve()
     ignore = GitIgnoreLike.from_ignore_files(root, ignore_filenames)
-
+    groups: dict[str, list[FileRef]] = {
+        "code": [],
+        "document": [],
+        "fallback": [],
+    }
     # Use os.walk for efficient dir pruning.
     for dirpath, dirnames, filenames in os.walk(root, followlinks=follow_symlinks):
         dpath = Path(dirpath)
@@ -206,7 +224,10 @@ def scan_files(
             if ignore.ignores(rel, is_dir=False):
                 continue
 
-            yield FileRef(
+            ext = Path(rel).suffix.lower()
+            group = _resolve_group(ext)
+
+            fr = FileRef(
                 path=str(p),
                 relative_path=rel,
                 file_size=int(st.st_size),
@@ -214,3 +235,9 @@ def scan_files(
                 content_hash=_sha256_file(p),
                 mime_type=_guess_mime_type(p),
             )
+
+            print(groups)
+            print(group)
+            groups[group].append(fr)
+
+    return ScanResult(groups=groups)

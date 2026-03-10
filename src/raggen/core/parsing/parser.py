@@ -8,7 +8,7 @@ class ParseInput(BaseModel):
     doc_id: str
     data: bytes
     mimetype: str
-    filename: str | None
+    filename: str
 
 
 class SourceRef(BaseModel):
@@ -31,6 +31,7 @@ class ParseResult(BaseModel):
     document: Document
     parser_id: str                # e.g. "docx:v1", "plaintext:v1"
     effective_mimetype: str       # after normalization/fallback selection
+    file_extension: str
 
 
 class Parser(Protocol):

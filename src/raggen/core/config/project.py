@@ -15,11 +15,21 @@ class ScanConfig(TOMLDataclass):
 
 
 @dataclass
+class FileGroup(TOMLDataclass):
+    name: str
+    file_extensions: List[str]
+
+
+@dataclass
 class ChunkingConfig(TOMLDataclass):
     strategy: str = "fixed"
     unit: str = "chars"
     chunk_size: int = 1200
     overlap: int = 200
+    file_groups: List[FileGroup] = field(default_factory=lambda: [
+        FileGroup(name="code", file_extensions=[".py"]),
+        FileGroup(name="document", file_extensions=[".md", ".pdf", ".txt"]),
+    ])
 
 
 @dataclass
