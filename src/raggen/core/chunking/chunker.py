@@ -182,23 +182,13 @@ def _chunk_heading(doc: Document, conf: GroupChunkingConfig) -> list[str]:
 
 
 def _chunk_paragraph(doc: Document, conf: GroupChunkingConfig) -> list[str]:
-    # Simple paragraph-based chunking: split on double-newline and then apply merging
-    text = getattr(doc, "text", "")
-    paras = text.split("\n\n") if text else []
-    out: List[str] = []
-    for p in paras:
-        if p == "":
-            continue
-        if len(p) <= conf.chunk_size:
-            out.append(p)
-        else:
-            # fallback to fixed-size slicing within paragraph
-            start = 0
-            while start < len(p):
-                end = min(len(p), start + conf.chunk_size)
-                out.append(p[start:end])
-                start = max(0, end - conf.overlap)
-    return out
+    splitter = RecursiveCharacterTextSplitter(
+        separators=["\n\n"],
+        keep_separator=False,
+        chunk_size=conf.chunk_size,
+        chunk_overlap=conf.overlap,
+    )
+    return splitter.split_text(getattr(doc, "text", ""))
 
 
 def _chunk_ast(doc: Document, conf: GroupChunkingConfig) -> list[str]:
