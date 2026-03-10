@@ -26,6 +26,7 @@ class ChunkingConfig(TOMLDataclass):
     unit: str = "chars"
     chunk_size: int = 1200
     overlap: int = 200
+    fallback_group: str = "fallback"
     file_groups: List[FileGroup] = field(default_factory=lambda: [
         FileGroup(name="code", file_extensions=[".py"]),
         FileGroup(name="document", file_extensions=[".md", ".pdf", ".txt"]),

@@ -89,7 +89,7 @@ def do_ingest(destructive: bool = False) -> Dict[str, Any]:
                         'empty_text_after_parse', 0) + 1
                     continue
                 chunker = Chunker(doc)
-                # TODO:actual chunk_config
+                # TODO:substitute for new chunking based on groups
                 chunks = chunker.chunk(DEFAULT_CHUNK_CONFIG)
                 # embed
                 em_results = embed_chunks(

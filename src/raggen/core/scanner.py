@@ -157,11 +157,12 @@ def _guess_mime_type(path: Path) -> str:
 
 
 def _resolve_group(ext: str) -> str:
-    cfg_groups = ProjectConfig.get_config().chunking.file_groups
+    cfg = ProjectConfig.get_config()
+    cfg_groups = cfg.chunking.file_groups
     for group in cfg_groups:
         if ext in group.file_extensions:
             return group.name
-    return "fallback"
+    return cfg.chunking.fallback_group
 
 
 def scan_files(
