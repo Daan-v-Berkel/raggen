@@ -236,8 +236,6 @@ def scan_files(
                 mime_type=_guess_mime_type(p),
             )
 
-            print(groups)
-            print(group)
             groups[group].append(fr)
 
     return ScanResult(groups=groups)

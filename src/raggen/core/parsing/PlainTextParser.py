@@ -1,4 +1,4 @@
-from .parser import ParseResult, _normalize_line_endings, _build_canonical_text, _split_paragraphs_drop_empty, Document, SourceRef
+from .parser import ParseResult, _normalize_line_endings, _build_canonical_text, _split_paragraphs_drop_empty,  Document, SourceRef
 from pathlib import Path
 
 
@@ -25,9 +25,9 @@ class PlainTextFallbackParser:
         built = _build_canonical_text(paragraphs)
 
         # Build Document with simple SourceRef
-        rel_path = getattr(inp, "filename")
-        src = SourceRef(scheme="file", rel_path=rel_path or inp.doc_id,
-                        display_name=Path(rel_path).name)
+        src = SourceRef(scheme="file", rel_path=getattr(inp, "filename", None) or inp.doc_id,
+                        display_name=Path(getattr(inp, "filename", inp.doc_id)).name)
+
         doc = Document(
             doc_id=inp.doc_id,
             text=built.text,
@@ -40,5 +40,4 @@ class PlainTextFallbackParser:
             document=doc,
             parser_id=self.parser_id,
             effective_mimetype=effective,
-            file_extension=rel_path.suffix,
         )

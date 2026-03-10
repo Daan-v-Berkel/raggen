@@ -38,103 +38,116 @@ def do_ingest(destructive: bool = False) -> Dict[str, Any]:
 
     current_files = set()
     db_files = set(fetch_all_document_ids(engine))
-    for fr in scan_files(cfg.project_root, ignore_filenames=cfg.scan.ignore_files):
-        current_files.add(fr.relative_path)
-        # gating: raw bytes
-        if not should_ingest_changed_file(fr, cfg):
-            logger.warning("Skipping %s: file already ingested and unchanged",
-                           fr.relative_path)
-            warnings_agg['unchanged'] = warnings_agg.get('unchanged', 0) + 1
-            continue
-        try:
-            data = Path(fr.path).read_bytes()
-        except Exception:
-            logger.warning("Skipping %s: could not read file",
-                           fr.relative_path)
-            warnings_agg['read_error'] = warnings_agg.get('read_error', 0) + 1
-            continue
-        ok, reason = should_ingest_raw_bytes(data)
-        if not ok:
-            logger.warning("Skipping %s: empty file (0 bytes)",
-                           fr.relative_path)
-            warnings_agg['empty_bytes'] = warnings_agg.get(
-                'empty_bytes', 0) + 1
+
+    scanned = scan_files(
+        cfg.project_root, ignore_filenames=cfg.scan.ignore_files)
+
+    for group, file_refs in scanned.groups.items():
+        if not file_refs:
             continue
 
-        try:
-            doc_id = fr.relative_path
-            mimetype = fr.mime_type or 'application/octet-stream'
-            inp = ParseInput(doc_id=doc_id, data=data,
-                             mimetype=mimetype, filename=Path(fr.path).name)
-            result = parser_service.parse_document(inp)
-            doc = result.document
-            # gating: parsed document
-            ok2, reason2 = should_ingest_parsed_document(doc)
-            if not ok2:
-                logger.warning(
-                    "Skipping %s: parser produced empty text", doc_id)
-                warnings_agg['empty_text_after_parse'] = warnings_agg.get(
-                    'empty_text_after_parse', 0) + 1
+        # TODO:hook up future chunker_registry.get(group)
+
+        for fr in file_refs:
+            current_files.add(fr.relative_path)
+            # gating: raw bytes
+            if not should_ingest_changed_file(fr, cfg):
+                logger.warning("Skipping %s: file already ingested and unchanged",
+                               fr.relative_path)
+                warnings_agg['unchanged'] = warnings_agg.get(
+                    'unchanged', 0) + 1
                 continue
-            chunker = Chunker(doc)
-            # TODO:actual chunk_config
-            chunks = chunker.chunk(DEFAULT_CHUNK_CONFIG)
-            # embed
-            em_results = embed_chunks(
-                embedder, chunks, batch_size=cfg.embedding.batch_size, normalize=cfg.embedding.normalize)
-            # build rows
-            document_row = {
-                'doc_id': doc.doc_id,
-                'source_path': str(doc.source or doc.doc_id),
-                'mimetype': mimetype,
-                'mtime_ns': fr.mtime,
-                'byte_size': fr.file_size,
-                'content_hash': fr.content_hash,
-                'parsed_at': datetime.now(),
-                'parser_id': 'plain',
-                'structure_version': 'v1',
-                'text_char_len': len(doc.text),
-            }
-            chunk_rows = []
-            embedding_meta_rows = []
-            vectors = []
-            for ch, em in zip(chunks, em_results):
-                chunk_rows.append({
-                    'chunk_id': ch.chunk_id,
-                    'doc_id': ch.doc_id,
-                    'chunk_index': ch.chunk_index,
-                    'text': ch.text,
-                    'start_offset': getattr(ch, 'start_offset', 0) or 0,
-                    'end_offset': getattr(ch, 'end_offset', len(ch.text)) or len(ch.text),
-                    'page_number': getattr(ch, 'page_number', None),
-                    'heading_path_json': getattr(ch, 'heading_path_json', None),
-                    'chunk_config_hash': cfg.chunking.chunk_size or '',
-                    'created_at': '',
-                })
-                embedding_meta_rows.append({
-                    'chunk_id': ch.chunk_id,
-                    'embedding_model_id': cfg.embedding.model_id,
-                    'dim': cfg.embedding.dim,
-                    'normalized': 1 if cfg.embedding.normalize else 0,
-                    'created_at': '',
-                })
-                vectors.append((ch.chunk_id, em.vector.tolist()))
-            # store
-            store_document_bundle(
-                engine=engine,
-                cfg=cfg,
-                vector_backend=backend,
-                document_row=document_row,
-                chunk_rows=chunk_rows,
-                embeddings=vectors,
-                embedding_meta_rows=embedding_meta_rows,
-            )
-            doc_count += 1
-            chunk_count += len(chunk_rows)
-            emb_count += len(vectors)
-        except Exception as exc:
-            log_error(str(fr.path), 'ingest', exc)
-            errors.append({'path': str(fr.path), 'error': str(exc)})
+            try:
+                data = Path(fr.path).read_bytes()
+            except Exception:
+                logger.warning("Skipping %s: could not read file",
+                               fr.relative_path)
+                warnings_agg['read_error'] = warnings_agg.get(
+                    'read_error', 0) + 1
+                continue
+            ok, reason = should_ingest_raw_bytes(data)
+            if not ok:
+                logger.warning("Skipping %s: empty file (0 bytes)",
+                               fr.relative_path)
+                warnings_agg['empty_bytes'] = warnings_agg.get(
+                    'empty_bytes', 0) + 1
+                continue
+
+            try:
+                doc_id = fr.relative_path
+                mimetype = fr.mime_type or 'application/octet-stream'
+                inp = ParseInput(doc_id=doc_id, data=data,
+                                 mimetype=mimetype, filename=Path(fr.path).name)
+                result = parser_service.parse_document(inp)
+                doc = result.document
+                # gating: parsed document
+                ok2, reason2 = should_ingest_parsed_document(doc)
+                if not ok2:
+                    logger.warning(
+                        "Skipping %s: parser produced empty text", doc_id)
+                    warnings_agg['empty_text_after_parse'] = warnings_agg.get(
+                        'empty_text_after_parse', 0) + 1
+                    continue
+                chunker = Chunker(doc)
+                # TODO:actual chunk_config
+                chunks = chunker.chunk(DEFAULT_CHUNK_CONFIG)
+                # embed
+                em_results = embed_chunks(
+                    embedder, chunks, batch_size=cfg.embedding.batch_size, normalize=cfg.embedding.normalize)
+                # build rows
+                document_row = {
+                    'doc_id': doc.doc_id,
+                    'source_path': str(doc.source or doc.doc_id),
+                    'mimetype': mimetype,
+                    'mtime_ns': fr.mtime,
+                    'byte_size': fr.file_size,
+                    'content_hash': fr.content_hash,
+                    'parsed_at': datetime.now(),
+                    'parser_id': 'plain',
+                    'structure_version': 'v1',
+                    'text_char_len': len(doc.text),
+                }
+                chunk_rows = []
+                embedding_meta_rows = []
+                vectors = []
+                for ch, em in zip(chunks, em_results):
+                    chunk_rows.append({
+                        'chunk_id': ch.chunk_id,
+                        'doc_id': ch.doc_id,
+                        'chunk_index': ch.chunk_index,
+                        'text': ch.text,
+                        'start_offset': getattr(ch, 'start_offset', 0) or 0,
+                        'end_offset': getattr(ch, 'end_offset', len(ch.text)) or len(ch.text),
+                        'page_number': getattr(ch, 'page_number', None),
+                        'heading_path_json': getattr(ch, 'heading_path_json', None),
+                        'chunk_config_hash': cfg.chunking.chunk_size or '',
+                        'created_at': '',
+                    })
+                    embedding_meta_rows.append({
+                        'chunk_id': ch.chunk_id,
+                        'embedding_model_id': cfg.embedding.model_id,
+                        'dim': cfg.embedding.dim,
+                        'normalized': 1 if cfg.embedding.normalize else 0,
+                        'created_at': '',
+                    })
+                    vectors.append((ch.chunk_id, em.vector.tolist()))
+                # store
+                store_document_bundle(
+                    engine=engine,
+                    cfg=cfg,
+                    vector_backend=backend,
+                    document_row=document_row,
+                    chunk_rows=chunk_rows,
+                    embeddings=vectors,
+                    embedding_meta_rows=embedding_meta_rows,
+                )
+                doc_count += 1
+                chunk_count += len(chunk_rows)
+                emb_count += len(vectors)
+            except Exception as exc:
+                log_error(str(fr.path), 'ingest', exc)
+                errors.append({'path': str(fr.path), 'error': str(exc)})
+
     log_stage('ingest_done', {'docs': doc_count,
               'chunks': chunk_count, 'embeddings': emb_count})
     # compute skipped/docs parsed/docs deleted
