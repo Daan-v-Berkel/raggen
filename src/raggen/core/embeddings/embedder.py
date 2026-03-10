@@ -72,10 +72,6 @@ def embed_chunks(
     `chunks` must have:
       - chunk.chunk_id (str)
       - chunk.text (str)
-
-    Optional caching:
-      - cache_get(chunk_id, model_id) -> np.ndarray | None
-      - cache_put(chunk_id, model_id, vector: np.ndarray) -> None
     """
     results: List[EmbeddingResult] = []
 
