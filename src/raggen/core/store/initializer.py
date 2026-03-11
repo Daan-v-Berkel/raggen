@@ -27,15 +27,15 @@ def _compare_configs(stored: dict, cfg: ProjectConfig) -> dict:
     diffs = {}
     checks = [
         ("schema_version", "schema_version"),
-        ("backend_key", "storage.backend_key"),
-        ("embedding_model_id", "embedding.model_id"),
-        ("embedding_dim", "embedding.dim"),
-        ("embedding_normalized", "embedding.normalize"),
-        ("query_model_id", "query.model_id"),
+        ("storage.backend_key", "storage.backend_key"),
+        ("embedding.model_id", "embedding.model_id"),
+        ("embedding.dim", "embedding.dim"),
+        ("embedding.normalize", "embedding.normalize"),
+        ("query.model_id", "query.model_id"),
     ]
 
     for stored_k, cfg_path in checks:
-        stored_val = stored.get(stored_k)
+        stored_val = _get_attr_path(stored, stored_k)
         cfg_val = _get_attr_path(cfg, cfg_path)
 
         # normalize bool to match DB integer storage
@@ -54,24 +54,17 @@ def _compare_configs(stored: dict, cfg: ProjectConfig) -> dict:
 def validate_existing_project(engine: Engine, cfg: ProjectConfig) -> None:
     conn = engine.connect()
     sel = select(rag_project).where(rag_project.c.id == 1)
-    res = conn.execute(sel).mappings().fetchone()
+    try:
+        res = conn.execute(sel).mappings().fetchone()
+    except Exception:
+        # Table may not exist yet; treat as no stored project
+        res = None
     conn.close()
     if not res:
         return
     stored = _row_to_config(res)
     diffs = _compare_configs(stored, cfg)
-    # also validate stored notes for vector backend import path if present
-    stored_notes = {}
-    try:
-        stored_notes = json.loads(stored.get("notes_json") or "{}")
-    except Exception:
-        stored_notes = {}
-    stored_vbi = stored_notes.get("vector_backend_import")
-    if stored_vbi and stored_vbi != cfg.storage.vector_backend_import:
-        diffs["vector_backend_import"] = {
-            "stored": stored_vbi,
-            "expected": cfg.storage.vector_backend_import,
-        }
+
     if diffs:
         raise SchemaMismatchError(
             f"Stored project configuration differs: {json.dumps(diffs, indent=2)}\nRun with destructive=True to reinitialize."
@@ -82,6 +75,7 @@ def init_database(cfg: ProjectConfig, *, destructive: bool = False) -> Engine:
     # Prefer runtime engine when it matches the requested DB URL; otherwise create a
     # transient engine for the requested cfg.storage.database_url so callers that
     # don't bootstrap still work against the intended database.
+    # TODO: this is shit, callers need to call bootstrap, this only exists for tests to work. Need a betterway to handle testing
     try:
         engine = get_engine()
         try:
@@ -131,54 +125,39 @@ def init_database(cfg: ProjectConfig, *, destructive: bool = False) -> Engine:
         )
 
     # Check existing project row BEFORE creating vector schema to avoid backend-side limits
-    conn = engine.connect()
-    sel = select(rag_project).where(rag_project.c.id == 1)
-    try:
-        res = conn.execute(sel).mappings().fetchone()
-    except Exception:
-        # Table may not exist yet; treat as no stored project
-        res = None
+    # conn = engine.connect()
+    # sel = select(rag_project).where(rag_project.c.id == 1)
+    # try:
+    #     res = conn.execute(sel).mappings().fetchone()
+    # except Exception:
+    #     # Table may not exist yet; treat as no stored project
+    #     res = None
+    if not destructive:
+        validate_existing_project(engine, cfg)
 
-    if res and not destructive:
-        # validate
-        stored = dict(res)
-        diffs = _compare_configs(stored, cfg)
-        conn.close()
-        if diffs:
-            raise SchemaMismatchError(
-                f"Stored project configuration differs: {json.dumps(diffs, indent=2)}\nRun with destructive=True to reinitialize."
-            )
     else:
         # If destructive, drop vector schema first (safer) then drop metadata
-        conn.close()
-        if destructive:
-            try:
-                backend.drop_schema(engine)
-            except Exception:
-                # ignore errors during drop to allow metadata drop to proceed
-                pass
-            metadata.drop_all(engine)
+        try:
+            backend.drop_schema(engine)
+        except Exception:
+            # ignore errors during drop to allow metadata drop to proceed
+            pass
+        metadata.drop_all(engine)
 
         # create metadata tables
-        metadata.create_all(engine)
+    metadata.create_all(engine)
 
-        # create vector schema
-        backend.create_schema(engine, cfg.embedding.dim)
+    # create vector schema
+    backend.create_schema(engine, cfg.embedding.dim)
 
-        # insert new row, include vector_backend_import in notes
-        notes = dict(cfg.notes or {})
-        notes["vector_backend_import"] = cfg.storage.vector_backend_import
-        cfg.notes = notes
-        row = cfg.to_row()
-        with engine.begin() as conn2:
-            ins = rag_project.insert().values(**row)
-            conn2.execute(ins)
-    # attach backend to engine for callers, but return engine for backwards compatibility
-    try:
-        setattr(engine, "_rag_vector_backend", backend)
-    except Exception:
-        pass
-    return engine
+    # insert new row, include vector_backend_import in notes
+    notes = dict(cfg.notes or {})
+    notes["vector_backend_import"] = cfg.storage.vector_backend_import
+    cfg.notes = notes
+    row = cfg.to_row()
+    with engine.begin() as conn2:
+        ins = rag_project.insert().values(**row)
+        conn2.execute(ins)
     # attach backend to engine for callers, but return engine for backwards compatibility
     try:
         setattr(engine, "_rag_vector_backend", backend)
