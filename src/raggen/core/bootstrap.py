@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 from typing import Optional
+from tomlkit.exceptions import ParseError
 
 from raggen.core.config.project import ProjectConfig
 from raggen.core.config.config_utils import validate_file_groups
@@ -33,12 +34,6 @@ def bootstrap(config_path: Optional[Path] = None) -> ProjectConfig:
     """
     path = _resolve_config_path(config_path)
 
-    if not path.exists():
-        raise BootstrapError(
-            f"Config file not found: {path}\n"
-            "Run `rag init` to initialize the project."
-        )
-
     # Already initialized: only allow exact same config path.
     if is_initialized():
         current_path = get_config_path()
@@ -55,6 +50,12 @@ def bootstrap(config_path: Optional[Path] = None) -> ProjectConfig:
             f"Refusing to re-bootstrap from {path}."
         )
 
+    if not path.exists():
+        raise BootstrapError(
+            f"Config file not found: {path}\n"
+            "Run `rag init` to initialize in the current working directory."
+        )
+
     # Defensive check for partial state drift.
     existing_cfg = ProjectConfig.get_config()
     if existing_cfg is not None:
@@ -66,6 +67,9 @@ def bootstrap(config_path: Optional[Path] = None) -> ProjectConfig:
     engine = None
     try:
         cfg = ProjectConfig.load_config(path)
+    except ParseError as err:
+        raise BootstrapError(f"Invalid config file: {path}\n{err}") from err
+    try:
         validate_file_groups(cfg)
 
         engine = create_engine_from_url(cfg.storage.database_url)
