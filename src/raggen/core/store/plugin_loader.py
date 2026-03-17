@@ -48,7 +48,8 @@ def load_vector_backend(import_path: str) -> VectorBackend:
         # allow passing an already-instantiated object
         inst = obj
     # duck-type check: ensure required methods exist
-    required = ("supports", "create_schema", "drop_schema", "upsert_vectors")
+    required = ("supports", "create_schema", "drop_schema",
+                "upsert_vectors", "delete_vectors", "search")
     for name in required:
         if not hasattr(inst, name) or not callable(getattr(inst, name)):
             raise BackendLoadError(

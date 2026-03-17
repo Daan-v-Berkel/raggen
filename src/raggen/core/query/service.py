@@ -26,10 +26,6 @@ def query(request: QueryRequest) -> QueryResponse:
     cfg = ProjectConfig.get_config()
     engine = get_engine()
 
-    # if engine is None:
-    #     raise RuntimeError(
-    #         "No database engine available. Did you run bootstrap()?")
-
     vector_backend = load_vector_backend(cfg.storage.vector_backend_import)
 
     query_model_id = _resolve_query_model_id(request, cfg)

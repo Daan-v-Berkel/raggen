@@ -16,7 +16,7 @@ from raggen.core.embeddings.embedder import (
     LocalSentenceTransformerEmbedder,
     embed_chunks,
 )
-from raggen.core.store import init_database, store_document_bundle, delete_documents
+from raggen.core.store import init_database, store_document_bundle, delete_documents, load_vector_backend
 from raggen.core.store.metadata_store import fetch_all_document_ids
 from raggen.core.scanner import scan_files
 from raggen.core.runtime import get_engine
@@ -26,7 +26,7 @@ from datetime import datetime
 def do_ingest(destructive: bool = False) -> Dict[str, Any]:
     cfg = ProjectConfig.get_config()
     engine = get_engine()
-    backend = getattr(engine, "_rag_vector_backend", None)
+    backend = load_vector_backend(cfg.storage.vector_backend_import)
     # scan using scanner
     initial_warnings = {"empty_bytes": 0}
     # total files scanned includes skipped empty files
