@@ -1,58 +1,59 @@
-import types
-import sys
 import pytest
 from sqlalchemy import select
 
-from raggen.core.config.project import default_project_config
-from raggen.core.store.metadata_store import MetadataStore
+from raggen.core.bootstrap import bootstrap
 from raggen.core.store.ingest_store import store_document_bundle
-from raggen.core.store.engine import create_engine_from_url
-from raggen.core.runtime import set_engine
+from raggen.core.store.initializer import init_database
 from raggen.core.store.metadata_schema import documents, chunks, embeddings
+from raggen.core.store.metadata_store import MetadataStore
 
 
-class DummyInitBackend:
-    def __init__(self):
-        self.key = "dummy_init"
+class RaisingBackend:
+    key = "raise"
 
     def supports(self, engine):
         return True
 
     def create_schema(self, engine, dim):
-        # no-op
         pass
 
     def drop_schema(self, engine):
         pass
 
     def upsert_vectors(self, *args, **kwargs):
-        pass
+        raise RuntimeError("fail vector upsert")
+
+    def delete_vectors(self, *args, **kwargs):
+        return None
+
+    def search(self, engine, *, query_vector, top_k):
+        return []
 
 
-def _inject_dummy_module(name="tests._dummy_init_mod"):
-    mod = types.ModuleType(name)
-    mod.DummyInitBackend = DummyInitBackend
-    sys.modules[name] = mod
-    return name + ":DummyInitBackend"
+class GoodBackend(RaisingBackend):
+    key = "good"
+
+    def upsert_vectors(self, *args, **kwargs):
+        return None
 
 
-def test_metadata_store_upserts_sqlite(tmp_path):
-    import_path = _inject_dummy_module()
-    cfg = default_project_config(tmp_path)
-    cfg.storage.database_url = f"sqlite:///{(tmp_path / '.rag' / 'rag.db').resolve().as_posix()}"
-
-    engine = create_engine_from_url(cfg.storage.database_url)
-    set_engine(engine)
+def test_metadata_store_upserts_sqlite(
+    tmp_path,
+    cfg_factory,
+    write_cfg,
+    noop_backend_import,
+):
+    cfg = cfg_factory(tmp_path)
     cfg.storage.backend_key = "dummy_init"
-    cfg.storage.vector_backend_import = import_path
+    cfg.storage.vector_backend_import = noop_backend_import
     cfg.embedding.model_id = "m"
     cfg.embedding.dim = 3
     cfg.embedding.normalize = True
 
-    # ensure metadata tables and backend are initialized on the engine
-    from raggen.core.store.initializer import init_database
-    init_database(cfg)
+    cfg_path = write_cfg(cfg, tmp_path)
+    cfg = bootstrap(cfg_path)
 
+    engine = init_database(cfg)
     ms = MetadataStore(engine)
 
     doc_row = {
@@ -67,6 +68,7 @@ def test_metadata_store_upserts_sqlite(tmp_path):
         "structure_version": "v1",
         "text_char_len": 10,
     }
+
     chunk_row = {
         "chunk_id": "c1",
         "doc_id": "d1",
@@ -79,6 +81,7 @@ def test_metadata_store_upserts_sqlite(tmp_path):
         "chunk_config_hash": "abc",
         "created_at": "t",
     }
+
     emb_row = {
         "chunk_id": "c1",
         "embedding_model_id": "m",
@@ -92,16 +95,17 @@ def test_metadata_store_upserts_sqlite(tmp_path):
         ms.upsert_chunks(conn, [chunk_row])
         ms.upsert_embedding_meta(conn, [emb_row])
 
-    # verify inserted
     with engine.connect() as conn:
         r = conn.execute(select(documents)).mappings().fetchone()
         assert r and r["doc_id"] == "d1"
+
         r2 = conn.execute(select(chunks)).mappings().fetchone()
         assert r2 and r2["chunk_id"] == "c1"
+
         r3 = conn.execute(select(embeddings)).mappings().fetchone()
         assert r3 and r3["chunk_id"] == "c1"
 
-    # upsert modified values
+    # Upsert modified values
     doc_row["byte_size"] = 999
     chunk_row["text"] = "changed"
     emb_row["dim"] = 4
@@ -114,50 +118,31 @@ def test_metadata_store_upserts_sqlite(tmp_path):
     with engine.connect() as conn:
         r = conn.execute(select(documents)).mappings().fetchone()
         assert r and int(r["byte_size"]) == 999
+
         r2 = conn.execute(select(chunks)).mappings().fetchone()
         assert r2 and r2["text"] == "changed"
+
         r3 = conn.execute(select(embeddings)).mappings().fetchone()
         assert r3 and int(r3["dim"]) == 4
 
 
-class RaisingBackend:
-    def __init__(self):
-        self.key = "raise"
-
-    def supports(self, engine):
-        return True
-
-    def create_schema(self, engine, dim):
-        pass
-
-    def drop_schema(self, engine):
-        pass
-
-    def upsert_vectors(self, *args, **kwargs):
-        raise RuntimeError("fail vector upsert")
-
-
-class GoodBackend(RaisingBackend):
-    def upsert_vectors(self, *args, **kwargs):
-        return None
-
-
-def test_store_document_bundle_transactionality(tmp_path):
-    import_path = _inject_dummy_module()
-    cfg = default_project_config(tmp_path)
-    cfg.storage.database_url = f"sqlite:///{(tmp_path / '.rag' / 'rag.db').resolve().as_posix()}"
-
-    engine = create_engine_from_url(cfg.storage.database_url)
-    set_engine(engine)
+def test_store_document_bundle_transactionality(
+    tmp_path,
+    cfg_factory,
+    write_cfg,
+    noop_backend_import,
+):
+    cfg = cfg_factory(tmp_path)
     cfg.storage.backend_key = "dummy_init"
-    cfg.storage.vector_backend_import = import_path
+    cfg.storage.vector_backend_import = noop_backend_import
     cfg.embedding.model_id = "m"
     cfg.embedding.dim = 3
     cfg.embedding.normalize = True
 
-    # ensure metadata tables and backend are initialized for this engine
-    from raggen.core.store.initializer import init_database
-    init_database(cfg)
+    cfg_path = write_cfg(cfg, tmp_path)
+    cfg = bootstrap(cfg_path)
+
+    engine = init_database(cfg)
 
     document_row = {
         "doc_id": "dtx",
@@ -171,6 +156,7 @@ def test_store_document_bundle_transactionality(tmp_path):
         "structure_version": "v1",
         "text_char_len": 10,
     }
+
     chunk_rows = [
         {
             "chunk_id": "ct1",
@@ -185,57 +171,77 @@ def test_store_document_bundle_transactionality(tmp_path):
             "created_at": "t",
         }
     ]
-    embeddings = [("ct1", [0.1, 0.2, 0.3])]
+
+    embeddings_rows = [("ct1", [0.1, 0.2, 0.3])]
+
     embedding_meta_rows = [
-        {"chunk_id": "ct1", "embedding_model_id": "m",
-            "dim": 3, "normalized": 1, "created_at": "t"}
+        {
+            "chunk_id": "ct1",
+            "embedding_model_id": "m",
+            "dim": 3,
+            "normalized": 1,
+            "created_at": "t",
+        }
     ]
 
-    # use raising backend
     bad = RaisingBackend()
-    with pytest.raises(RuntimeError):
-        store_document_bundle(engine=engine, cfg=cfg, vector_backend=bad, document_row=document_row,
-                              chunk_rows=chunk_rows, embeddings=embeddings, embedding_meta_rows=embedding_meta_rows)
+
+    with pytest.raises(RuntimeError, match="fail vector upsert"):
+        store_document_bundle(
+            engine=engine,
+            cfg=cfg,
+            vector_backend=bad,
+            document_row=document_row,
+            chunk_rows=chunk_rows,
+            embeddings=embeddings_rows,
+            embedding_meta_rows=embedding_meta_rows,
+        )
 
     with engine.connect() as conn:
         r = conn.execute(select(documents)).mappings().fetchone()
         assert r is None
 
-    # now with good backend
     good = GoodBackend()
-    store_document_bundle(engine=engine, cfg=cfg, vector_backend=good, document_row=document_row,
-                          chunk_rows=chunk_rows, embeddings=embeddings, embedding_meta_rows=embedding_meta_rows)
+
+    store_document_bundle(
+        engine=engine,
+        cfg=cfg,
+        vector_backend=good,
+        document_row=document_row,
+        chunk_rows=chunk_rows,
+        embeddings=embeddings_rows,
+        embedding_meta_rows=embedding_meta_rows,
+    )
 
     with engine.connect() as conn:
         r = conn.execute(select(documents)).mappings().fetchone()
         assert r and r["doc_id"] == "dtx"
 
 
-def test_e2e_row_builders_minimal_fields():
-    # import builders from scripts if possible
-    try:
-        import scripts.e2e_chunk_test as e2e
-        build_chunk = e2e.build_chunk_row
-    except Exception:
-        # fallback: recreate minimal builder
-        def build_chunk(doc_id, chunk_index, text, chunk_id=None):
-            cid = chunk_id or f"{doc_id}#chunk:{chunk_index}"
-            return {
-                "chunk_id": cid,
-                "doc_id": doc_id,
-                "chunk_index": chunk_index,
-                "text": text,
-                "start_offset": 0,
-                "end_offset": len(text),
-                "page_number": None,
-                "heading_path_json": None,
-                "chunk_config_hash": "abc",
-                "created_at": "t",
-            }
+def test_chunk_row_builder_minimal_fields():
+    """
+    Keep this test local to store concerns.
 
-        build_chunk = build_chunk
+    The old script-based import path is gone, so this checks the minimal
+    row-builder contract directly.
+    """
+    def build_chunk_row(doc_id: str, chunk_index: int, text: str, chunk_id: str | None = None):
+        cid = chunk_id or f"{doc_id}#chunk:{chunk_index}"
+        return {
+            "chunk_id": cid,
+            "doc_id": doc_id,
+            "chunk_index": chunk_index,
+            "text": text,
+            "start_offset": 0,
+            "end_offset": len(text),
+            "page_number": None,
+            "heading_path_json": None,
+            "chunk_config_hash": "abc",
+            "created_at": "t",
+        }
 
-    row = build_chunk("dmini", 0, "hi")
+    row = build_chunk_row("dmini", 0, "hi")
+
     assert row["page_number"] is None
     assert row["heading_path_json"] is None
     assert row["start_offset"] == 0

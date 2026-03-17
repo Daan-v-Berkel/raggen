@@ -9,6 +9,7 @@ from pathlib import Path
 def create_engine_from_url(database_url: str) -> Engine:
     # For sqlite file URLs, ensure parent directory exists
     url = make_url(database_url)
+    # FIXME: This assumes sqlite backend
     if url.drivername.startswith("sqlite"):
         # file path form: sqlite:////abs/path or sqlite:///relative/path
         # extract database file path if present (empty for in-memory)

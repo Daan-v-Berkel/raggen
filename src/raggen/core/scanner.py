@@ -59,7 +59,7 @@ class GitIgnoreLike:
         for file in ignore_files:
             ignore_file = root / file
             if not ignore_file.exists():
-                return GitIgnoreLike(rules)
+                continue
 
             for raw in ignore_file.read_text(
                 encoding="utf-8", errors="replace"

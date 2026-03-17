@@ -1,154 +1,62 @@
-from pathlib import Path
+from sqlalchemy import inspect, text
 import pytest
-from sqlalchemy import inspect
 
 from raggen.core.store import init_database, SchemaMismatchError
-from raggen.core.config.project import default_project_config
+from raggen.core.bootstrap import bootstrap
 
 
-def make_cfg(tmp_path, db_path: Path, **kwargs):
-    cfg = default_project_config(tmp_path)
-    cfg.storage.database_url = f"sqlite:///{db_path.resolve().as_posix()}"
-    cfg.embedding.model_id = kwargs.get("embedding_model_id", "bge-small-en")
-    cfg.embedding.dim = kwargs.get("embedding_dim", 1536)
-    cfg.embedding.normalize = kwargs.get("embedding_normalized", True)
-    cfg.notes = kwargs.get("notes", {})
-    return cfg
+def test_init_creates_tables_and_project_row(tmp_path, cfg_factory, write_cfg):
+    cfg = cfg_factory(tmp_path)
+    cfg_path = write_cfg(cfg, tmp_path)
 
-
-def test_init_creates_tables_and_project_row(tmp_path):
-    db_file = tmp_path / "rag.db"
-    cfg = make_cfg(tmp_path, db_file)
-    # write config and bootstrap to ensure runtime engine is registered
-    cfg_dir = tmp_path / '.rag'
-    cfg_dir.mkdir(exist_ok=True)
-    cfg_file = cfg_dir / 'config.toml'
-    # inject a dummy backend to avoid sqlite-vec in tests
-    import types, sys
-    mod = types.ModuleType('tests._dummy_mod')
-    class DummyBackend:
-        def __init__(self):
-            self.key = 'dummy'
-        def supports(self, engine):
-            return True
-        def create_schema(self, engine, dim):
-            self.created = True
-        def drop_schema(self, engine):
-            self.dropped = True
-        def upsert_vectors(self, *args, **kwargs):
-            return None
-    mod.DummyBackend = DummyBackend
-    sys.modules['tests._dummy_mod'] = mod
-
-    cfg_file.write_text(
-        f"[storage]\n"
-        f"database_url = \"{cfg.storage.database_url}\"\n"
-        f"vector_backend_import = \"tests._dummy_mod:DummyBackend\"\n"
-        f"backend_key = \"dummy\"\n"
-    )
-    from raggen.core.bootstrap import bootstrap
-    cfg = bootstrap(cfg_file)
-
+    cfg = bootstrap(cfg_path)
     engine = init_database(cfg)
+
     insp = inspect(engine)
     assert "rag_project" in insp.get_table_names()
     assert "documents" in insp.get_table_names()
     assert "chunks" in insp.get_table_names()
     assert "embeddings" in insp.get_table_names()
 
-    # verify project row
     with engine.connect() as conn:
         row = conn.execute(
-            "SELECT * FROM rag_project WHERE id=1").mappings().fetchone()
+            text("SELECT * FROM rag_project WHERE id=1")
+        ).mappings().fetchone()
+
         assert row is not None
         assert row["embedding_model_id"] == cfg.embedding.model_id
         assert int(row["embedding_dim"]) == cfg.embedding.dim
 
 
-def test_init_validates_existing_config(tmp_path):
-    db_file = tmp_path / "rag.db"
-    cfg1 = make_cfg(tmp_path, db_file, embedding_dim=1234)
-    # write config and bootstrap
-    cfg_dir = tmp_path / '.rag'
-    cfg_dir.mkdir(exist_ok=True)
-    cfg_file = cfg_dir / 'config.toml'
-    # inject dummy backend module
-    import types, sys
-    mod = types.ModuleType('tests._dummy_mod')
-    class DummyBackend:
-        def __init__(self):
-            self.key = 'dummy'
-        def supports(self, engine):
-            return True
-        def create_schema(self, engine, dim):
-            self.created = True
-        def drop_schema(self, engine):
-            self.dropped = True
-        def upsert_vectors(self, *args, **kwargs):
-            return None
-    mod.DummyBackend = DummyBackend
-    sys.modules['tests._dummy_mod'] = mod
+def test_init_validates_existing_config(tmp_path, cfg_factory, write_cfg):
+    cfg1 = cfg_factory(tmp_path, embedding_dim=1234)
+    cfg_path = write_cfg(cfg1, tmp_path)
 
-    cfg_file.write_text(
-        f"[storage]\n"
-        f"database_url = \"{cfg1.storage.database_url}\"\n"
-        f"vector_backend_import = \"tests._dummy_mod:DummyBackend\"\n"
-        f"backend_key = \"dummy\"\n"
-    )
-    from raggen.core.bootstrap import bootstrap
-    cfg1 = bootstrap(cfg_file)
+    cfg1 = bootstrap(cfg_path)
+    init_database(cfg1)
+    init_database(cfg1)
 
-    init_database(cfg1)
-    # same config should be fine
-    init_database(cfg1)
-    # different config should raise
-    cfg2 = make_cfg(tmp_path, db_file, embedding_dim=9999)
+    cfg2 = cfg_factory(tmp_path, embedding_dim=9999)
+
     with pytest.raises(SchemaMismatchError):
         init_database(cfg2)
 
 
-def test_destructive_reinit_allows_new_config(tmp_path):
-    db_file = tmp_path / "rag.db"
-    cfg1 = make_cfg(tmp_path, db_file, embedding_dim=1234)
-    # write config and bootstrap
-    cfg_dir = tmp_path / '.rag'
-    cfg_dir.mkdir(exist_ok=True)
-    cfg_file = cfg_dir / 'config.toml'
-    # inject dummy backend module
-    import types, sys
-    mod = types.ModuleType('tests._dummy_mod')
-    class DummyBackend:
-        def __init__(self):
-            self.key = 'dummy'
-        def supports(self, engine):
-            return True
-        def create_schema(self, engine, dim):
-            self.created = True
-        def drop_schema(self, engine):
-            self.dropped = True
-        def upsert_vectors(self, *args, **kwargs):
-            return None
-    mod.DummyBackend = DummyBackend
-    sys.modules['tests._dummy_mod'] = mod
+def test_destructive_reinit_allows_new_config(tmp_path, cfg_factory, write_cfg):
+    cfg1 = cfg_factory(tmp_path, embedding_dim=1234)
+    cfg_path = write_cfg(cfg1, tmp_path)
 
-    cfg_file.write_text(
-        f"[storage]\n"
-        f"database_url = \"{cfg1.storage.database_url}\"\n"
-        f"vector_backend_import = \"tests._dummy_mod:DummyBackend\"\n"
-        f"backend_key = \"dummy\"\n"
-    )
-    from raggen.core.bootstrap import bootstrap
-    cfg1 = bootstrap(cfg_file)
-
+    cfg1 = bootstrap(cfg_path)
     init_database(cfg1)
-    cfg2 = make_cfg(tmp_path, db_file, embedding_dim=9999)
-    # ensure dummy backend is used for cfg2 to avoid sqlite-vec max-dim errors
-    cfg2.storage.vector_backend_import = "tests._dummy_mod:DummyBackend"
-    cfg2.storage.backend_key = "dummy"
+
+    cfg2 = cfg_factory(tmp_path, embedding_dim=9999)
     init_database(cfg2, destructive=True)
-    # verify now matches cfg2
+
     engine = init_database(cfg2)
     with engine.connect() as conn:
         row = conn.execute(
-            "SELECT embedding_dim FROM rag_project WHERE id=1").mappings().fetchone()
-        assert row and int(row["embedding_dim"]) == cfg2.embedding.dim
+            text("SELECT embedding_dim FROM rag_project WHERE id=1")
+        ).mappings().fetchone()
+
+        assert row is not None
+        assert int(row["embedding_dim"]) == cfg2.embedding.dim

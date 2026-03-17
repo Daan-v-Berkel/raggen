@@ -16,17 +16,17 @@ from raggen.core.embeddings.embedder import (
     LocalSentenceTransformerEmbedder,
     embed_chunks,
 )
-from raggen.core.store import init_database, store_document_bundle, delete_documents
+from raggen.core.store import init_database, store_document_bundle, delete_documents, load_vector_backend
 from raggen.core.store.metadata_store import fetch_all_document_ids
 from raggen.core.scanner import scan_files
+from raggen.core.runtime import get_engine
 from datetime import datetime
 
 
 def do_ingest(destructive: bool = False) -> Dict[str, Any]:
-    # init db
     cfg = ProjectConfig.get_config()
-    engine = init_database(cfg, destructive=destructive)
-    backend = getattr(engine, "_rag_vector_backend", None)
+    engine = get_engine()
+    backend = load_vector_backend(cfg.storage.vector_backend_import)
     # scan using scanner
     initial_warnings = {"empty_bytes": 0}
     # total files scanned includes skipped empty files
@@ -45,7 +45,8 @@ def do_ingest(destructive: bool = False) -> Dict[str, Any]:
     current_files = set()
     db_files = set(fetch_all_document_ids(engine))
 
-    scanned = scan_files(cfg.project_root, ignore_filenames=cfg.scan.ignore_files)
+    scanned = scan_files(
+        cfg.project_root, ignore_filenames=cfg.scan.ignore_files)
 
     chunk_registry = ChunkerRegistry()
 
@@ -62,18 +63,23 @@ def do_ingest(destructive: bool = False) -> Dict[str, Any]:
                 logger.warning(
                     "Skipping %s: file already ingested and unchanged", fr.relative_path
                 )
-                warnings_agg["unchanged"] = warnings_agg.get("unchanged", 0) + 1
+                warnings_agg["unchanged"] = warnings_agg.get(
+                    "unchanged", 0) + 1
                 continue
             try:
                 data = Path(fr.path).read_bytes()
             except Exception:
-                logger.warning("Skipping %s: could not read file", fr.relative_path)
-                warnings_agg["read_error"] = warnings_agg.get("read_error", 0) + 1
+                logger.warning(
+                    "Skipping %s: could not read file", fr.relative_path)
+                warnings_agg["read_error"] = warnings_agg.get(
+                    "read_error", 0) + 1
                 continue
             ok, reason = should_ingest_raw_bytes(data)
             if not ok:
-                logger.warning("Skipping %s: empty file (0 bytes)", fr.relative_path)
-                warnings_agg["empty_bytes"] = warnings_agg.get("empty_bytes", 0) + 1
+                logger.warning(
+                    "Skipping %s: empty file (0 bytes)", fr.relative_path)
+                warnings_agg["empty_bytes"] = warnings_agg.get(
+                    "empty_bytes", 0) + 1
                 continue
 
             try:
@@ -90,7 +96,8 @@ def do_ingest(destructive: bool = False) -> Dict[str, Any]:
                 # gating: parsed document
                 ok2, reason2 = should_ingest_parsed_document(doc)
                 if not ok2:
-                    logger.warning("Skipping %s: parser produced empty text", doc_id)
+                    logger.warning(
+                        "Skipping %s: parser produced empty text", doc_id)
                     warnings_agg["empty_text_after_parse"] = (
                         warnings_agg.get("empty_text_after_parse", 0) + 1
                     )
