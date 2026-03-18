@@ -7,9 +7,10 @@ from raggen.core.runtime import get_engine
 from raggen.core.config.project import ProjectConfig
 from raggen.core.embeddings.embedder import LocalSentenceTransformerEmbedder
 from raggen.core.store.plugin_loader import load_vector_backend
+from raggen.core.results.envelope import ResultEnvelope, ResultMessage
 
 
-def query(request: QueryRequest) -> QueryResponse:
+def query(request: QueryRequest) -> ResultEnvelope:
     """
     Retrieval-only query flow.
 
@@ -35,6 +36,11 @@ def query(request: QueryRequest) -> QueryResponse:
     embedder = LocalSentenceTransformerEmbedder(model_id=query_model_id)
     _validate_query_embedder(embedder, expected_dim=query_dim)
 
+    query_result = ResultEnvelope(
+        operation="query",
+        success=False,
+    )
+
     matrix = embedder.embed_texts(
         [request.text],
         batch_size=1,
@@ -48,14 +54,16 @@ def query(request: QueryRequest) -> QueryResponse:
         top_k=request.top_k,
     )
 
+    response = QueryResponse(
+        query=request.text,
+        matches=[],
+        answer=None,
+        used_query_model=query_model_id,
+        used_llm_model=request.llm_model_id or None,
+    )
+
     if not search_results:
-        return QueryResponse(
-            query=request.text,
-            matches=[],
-            answer=None,
-            used_query_model=query_model_id,
-            used_llm_model=request.llm_model_id or None,
-        )
+        response
 
     chunk_ids = [chunk_id for chunk_id, _score in search_results]
     score_by_chunk_id = {chunk_id: score for chunk_id, score in search_results}
@@ -81,8 +89,8 @@ def query(request: QueryRequest) -> QueryResponse:
             )
         )
 
-    answer = None
-    used_llm_model = None
+    response.matches = matches
+    query_result.success = True
 
     if cfg.generation.enabled:
         try:
@@ -91,20 +99,23 @@ def query(request: QueryRequest) -> QueryResponse:
                 chunks=matches,
                 cfg=cfg,
             )
-            answer = gen_result.text or None
-            used_llm_model = gen_result.model_id or None
+            response.answer = gen_result.text or None
+            response.used_llm_model = gen_result.model_id or None
         except GenerationNotImplementedError:
             # Retrieval must still succeed even if generation is not implemented yet.
-            answer = None
-            used_llm_model = cfg.generation.model_id or None
+            response.answer = None
+            response.used_llm_model = cfg.generation.model_id or None
+    else:
+        query_result.warnings.append(
+            ResultMessage(
+                code="generation_disabled",
+                message="Retrieval succeeded, but generation was disabled"
+            )
+        )
 
-    return QueryResponse(
-        query=request.text,
-        matches=matches,
-        answer=answer,
-        used_query_model=query_model_id,
-        used_llm_model=used_llm_model,
-    )
+    query_result.data = response
+
+    return query_result
 
 
 def _resolve_query_model_id(request: QueryRequest, cfg: ProjectConfig) -> str:

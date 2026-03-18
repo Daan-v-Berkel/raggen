@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Dict, Any
 from raggen.core.config.project import ProjectConfig
 from raggen.core.ingest.logging import log_stage, log_error, logger
 from raggen.core.ingest.gating import (
@@ -16,19 +15,26 @@ from raggen.core.embeddings.embedder import (
     LocalSentenceTransformerEmbedder,
     embed_chunks,
 )
-from raggen.core.store import init_database, store_document_bundle, delete_documents, load_vector_backend
+from raggen.core.store import store_document_bundle, delete_documents, load_vector_backend
 from raggen.core.store.metadata_store import fetch_all_document_ids
 from raggen.core.scanner import scan_files
 from raggen.core.runtime import get_engine
+from raggen.core.results.envelope import ResultEnvelope, ResultMessage
 from datetime import datetime
 
 
-def do_ingest(destructive: bool = False) -> Dict[str, Any]:
+def do_ingest(destructive: bool = False) -> ResultEnvelope:
     cfg = ProjectConfig.get_config()
     engine = get_engine()
     backend = load_vector_backend(cfg.storage.vector_backend_import)
-    # scan using scanner
-    initial_warnings = {"empty_bytes": 0}
+
+    ingest_result = ResultEnvelope(
+        operation="ingest",
+        success=False,
+    )
+    warnings_array: list[ResultMessage] = []
+    errors_array: list[ResultMessage] = []
+
     # total files scanned includes skipped empty files
     registry = ParserRegistry(fallback_parser=PlainTextFallbackParser())
     parser_service = ParserService(registry)
@@ -36,11 +42,7 @@ def do_ingest(destructive: bool = False) -> Dict[str, Any]:
     doc_count = 0
     chunk_count = 0
     emb_count = 0
-    errors = []
-    # aggregate warnings
-    warnings_agg: dict[str, int] = {}
-    for k, v in initial_warnings.items():
-        warnings_agg[k] = warnings_agg.get(k, 0) + v
+    skip_count = 0
 
     current_files = set()
     db_files = set(fetch_all_document_ids(engine))
@@ -60,26 +62,28 @@ def do_ingest(destructive: bool = False) -> Dict[str, Any]:
             current_files.add(fr.relative_path)
             # gating: raw bytes
             if not should_ingest_changed_file(fr, cfg):
-                logger.warning(
-                    "Skipping %s: file already ingested and unchanged", fr.relative_path
-                )
-                warnings_agg["unchanged"] = warnings_agg.get(
-                    "unchanged", 0) + 1
+                m = f"Skipping {fr.relative_path}: file already ingested and unchanged"
+                logger.warning(m)
+                warnings_array.append(ResultMessage(
+                    code="unchanged", message=m))
+                skip_count += 1
                 continue
             try:
                 data = Path(fr.path).read_bytes()
             except Exception:
-                logger.warning(
-                    "Skipping %s: could not read file", fr.relative_path)
-                warnings_agg["read_error"] = warnings_agg.get(
-                    "read_error", 0) + 1
+                m = f"Skipping {fr.relative_path}: could not read file"
+                logger.warning(m)
+                warnings_array.append(ResultMessage(
+                    code="read_error", message=m))
+                skip_count += 1
                 continue
             ok, reason = should_ingest_raw_bytes(data)
             if not ok:
-                logger.warning(
-                    "Skipping %s: empty file (0 bytes)", fr.relative_path)
-                warnings_agg["empty_bytes"] = warnings_agg.get(
-                    "empty_bytes", 0) + 1
+                m = f"Skipping {fr.relative_path}: empty file (0 bytes)"
+                logger.warning(m)
+                warnings_array.append(ResultMessage(
+                    code="zero_bytes", message=m))
+                skip_count += 1
                 continue
 
             try:
@@ -96,11 +100,11 @@ def do_ingest(destructive: bool = False) -> Dict[str, Any]:
                 # gating: parsed document
                 ok2, reason2 = should_ingest_parsed_document(doc)
                 if not ok2:
-                    logger.warning(
-                        "Skipping %s: parser produced empty text", doc_id)
-                    warnings_agg["empty_text_after_parse"] = (
-                        warnings_agg.get("empty_text_after_parse", 0) + 1
-                    )
+                    m = f"Skipping {fr.relative_path}: empty file"
+                    logger.warning(m)
+                    warnings_array.append(ResultMessage(
+                        code="empty_file", message=m))
+                    skip_count += 1
                     continue
                 chunks = chunker.chunk(doc)
                 # embed
@@ -167,26 +171,35 @@ def do_ingest(destructive: bool = False) -> Dict[str, Any]:
                 emb_count += len(vectors)
             except Exception as exc:
                 log_error(str(fr.path), "ingest", exc)
-                errors.append({"path": str(fr.path), "error": str(exc)})
+                errors_array.append(ResultMessage(
+                    code="ingestion_error", message=f"path: {str(fr.path)}, error: {str(exc)}"))
 
     log_stage(
         "ingest_done",
         {"docs": doc_count, "chunks": chunk_count, "embeddings": emb_count},
     )
     # compute skipped/docs parsed/docs deleted
-    docs_skipped = sum(warnings_agg.values())
     docs_to_remove = db_files - current_files
     n_removed = delete_documents(
         engine=engine, vector_backend=backend, documents=docs_to_remove
     )
-    result = {
+    result_data = {
         "docs_parsed": doc_count,
-        "docs_skipped": docs_skipped,
-        "skip_reasons": warnings_agg,
+        "docs_skipped": skip_count,
         "docs_removed": n_removed,
-        "docs": doc_count,
         "chunks": chunk_count,
         "embeddings": emb_count,
-        "errors": errors,
     }
-    return result
+
+    ingest_result.warnings = [
+        ResultMessage(code=w.code, message=w.message)
+        for w in warnings_array
+    ]
+    ingest_result.errors = [
+        ResultMessage(code=e.code, message=e.message)
+        for e in errors_array
+    ]
+    ingest_result.success = True
+    ingest_result.data = result_data
+
+    return ingest_result
