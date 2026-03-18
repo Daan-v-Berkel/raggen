@@ -6,6 +6,8 @@ from textwrap import shorten
 from raggen.core.bootstrap import bootstrap
 from raggen.core.query.models import QueryRequest
 from raggen.core.query.service import query
+from raggen.core.results.formats import OutputFormat
+from raggen.core.results.renderers import get_renderer
 
 
 def run_query(
@@ -13,6 +15,7 @@ def run_query(
     *,
     config_path: str | None = None,
     top_k: int | None = None,
+    format_as: OutputFormat = OutputFormat.JSON,
 ) -> int:
     """
     Run a retrieval query and print readable results.
@@ -32,22 +35,10 @@ def run_query(
         top_k=top_k or 8,
     )
 
-    response = query(request)
+    result = query(request)
+    renderer = get_renderer(format_as)
 
-    if not response.matches:
-        print("No matches found.")
-        return 0
-
-    print(f'Query: "{response.query}"')
-    print(f"Model: {response.used_query_model}")
-    print()
-
-    for i, match in enumerate(response.matches, start=1):
-        snippet = _format_snippet(match.text)
-        print(f"{i}. {match.doc_id}")
-        print(f"   score: {match.score:.6f}")
-        print(f"   {snippet}")
-        print()
+    print("Ingest finished:\n\n", renderer.render(result))
 
     return 0
 

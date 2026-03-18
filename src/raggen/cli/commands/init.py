@@ -44,7 +44,8 @@ def run_init(
     # interactive: simple prompt flow
     print(f"Initializing project at {root_p}")
     use_ignorefiles = (
-        input("ignorefiles to use (comma separated) [.gitignore]: ").strip().lower()
+        input(
+            "ignorefiles to use (comma separated) [.gitignore]: ").strip().lower()
         or ".gitignore"
     )
     if use_ignorefiles != "":  # TODO:more robust checking and make optional
@@ -53,14 +54,16 @@ def run_init(
     extra = input("Additional ignore globs (comma-separated) []: ").strip()
     if extra:
         cfg.scan.ignore = [s.strip() for s in extra.split(",") if s.strip()]
-    emb_model = input(f"Embedding model id [{cfg.embedding.model_id}]: ").strip()
+    emb_model = input(
+        f"Embedding model id [{cfg.embedding.model_id}]: ").strip()
     if emb_model:
         cfg.embedding.model_id = emb_model
     emb_dim = input(f"Embedding dimension [{cfg.embedding.dim}]: ").strip()
     if emb_dim:
         cfg.embedding.dim = int(emb_dim)
     # storage
-    backend = input(f"Storage backend key [{cfg.storage.backend_key}]: ").strip()
+    backend = input(
+        f"Storage backend key [{cfg.storage.backend_key}]: ").strip()
     if backend:
         cfg.storage.backend_key = backend
     db_url = input(f"Database URL [{cfg.storage.database_url}]: ").strip()
@@ -79,9 +82,4 @@ def run_init(
     init_database(cfg, destructive=destructive)
     print("initialised database and schema")
 
-    confirm = input("ingest now? (y/n) [n]: ").strip().lower() or "n"
-    if confirm.startswith("y"):
-        stats = do_ingest(destructive=False)
-        print("Ingest completed:", stats)
-    else:
-        print("Done. Run `rag ingest` to perform ingestion later.")
+    print("Done. Run `rag ingest` to perform ingestion.")

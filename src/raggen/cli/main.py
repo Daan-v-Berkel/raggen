@@ -7,9 +7,20 @@ from raggen.cli.commands import (
     ingest as ingest_cmd,
     query as query_cmd,
 )
+from raggen.core.results.formats import OutputFormat
+
+format_choices = [fmt.value for fmt in OutputFormat]
 
 
 def build_parser() -> argparse.ArgumentParser:
+    common_parser = argparse.ArgumentParser(add_help=False)
+    common_parser.add_argument(
+        "--format",
+        default=OutputFormat.JSON,
+        choices=format_choices,
+        help=f"Output format (default: %(default)s). Options: {', '.join(format_choices)}",
+    )
+
     parser = argparse.ArgumentParser(
         prog="raggen",
         description=(
@@ -31,6 +42,7 @@ def build_parser() -> argparse.ArgumentParser:
     init_p = sub.add_parser(
         "init",
         help="Create project configuration and initialize the database.",
+        parents=[common_parser],
         description=(
             "Initialize a Raggen project in the target root directory.\n"
             "This creates the .rag configuration directory and initializes the database."
@@ -57,6 +69,7 @@ def build_parser() -> argparse.ArgumentParser:
     ingest_p = sub.add_parser(
         "ingest",
         help="Scan files and update the index.",
+        parents=[common_parser],
         description=(
             "Ingest files according to the project configuration.\n"
             "This scans the configured project, parses files, chunks them, embeds them, "
@@ -82,6 +95,7 @@ def build_parser() -> argparse.ArgumentParser:
     query_p = sub.add_parser(
         "query",
         help="Run a similarity search against the indexed project.",
+        parents=[common_parser],
         description=(
             "Query the indexed project and return the most relevant chunks.\n"
             "This performs retrieval only; generation may be added separately."
@@ -127,6 +141,7 @@ def main(argv=None):
         return ingest_cmd.run_ingest(
             config_path=args.config,
             destructive=args.destructive,
+            format_as=args.format,
         )
 
     if args.command == "query":
@@ -134,6 +149,7 @@ def main(argv=None):
             args.text,
             config_path=args.config,
             top_k=args.top_k,
+            format_as=args.format
         )
 
     parser.print_help()
