@@ -6,14 +6,14 @@ from raggen.cli.commands import (
     init as init_cmd,
     ingest as ingest_cmd,
     query as query_cmd,
+    runs as runs_cmd
 )
 from raggen.core.results.formats import OutputFormat
 
-format_choices = [fmt.value for fmt in OutputFormat]
 
-
-def build_parser() -> argparse.ArgumentParser:
+def build_common_parser() -> argparse.ArgumentParser:
     common_parser = argparse.ArgumentParser(add_help=False)
+    format_choices = [fmt.value for fmt in OutputFormat]
     common_parser.add_argument(
         "--format",
         default=OutputFormat.JSON,
@@ -25,6 +25,12 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help=f"Output format (default: %(default)s). Options: {', '.join(format_choices)}",
     )
+
+    return common_parser
+
+
+def build_parser() -> argparse.ArgumentParser:
+    common_parser = build_common_parser()
 
     parser = argparse.ArgumentParser(
         prog="raggen",
@@ -128,6 +134,62 @@ def build_parser() -> argparse.ArgumentParser:
         help="Maximum number of matching chunks to return.",
     )
 
+    # runs
+    runs_p = sub.add_parser("runs", help="Inspect stored run history")
+    runs_sub = runs_p.add_subparsers(dest="runs_command")
+
+    runs_list_p = runs_sub.add_parser(
+        "list",
+        help="List stored runs",
+    )
+    runs_list_p.add_argument(
+        "--config",
+        default=".rag/config.toml",
+        help="Path to the project configuration TOML file.",
+    )
+    runs_list_p.add_argument(
+        "--limit",
+        type=int,
+        default=20,
+        help="Maximum number of runs to list.",
+    )
+    runs_list_p.add_argument(
+        "--operation",
+        type=str,
+        default=None,
+        help="Filter by operation, e.g. ingest or query.",
+    )
+    runs_list_p.set_defaults(func=runs_cmd.run_list)
+
+    runs_show_p = runs_sub.add_parser(
+        "show",
+        parents=[common_parser],
+        help="Show a stored run result",
+    )
+    runs_show_p.add_argument(
+        "--config",
+        default=".rag/config.toml",
+        help="Path to the project configuration TOML file.",
+    )
+    runs_show_p.add_argument(
+        "run_id",
+        nargs="?",
+        default=None,
+        help="Run ID to show.",
+    )
+    runs_show_p.add_argument(
+        "--latest",
+        action="store_true",
+        help="Show the latest run, optionally filtered by --action.",
+    )
+    runs_show_p.add_argument(
+        "--operation",
+        type=str,
+        default=None,
+        help="Filter latest lookup by operation, e.g. ingest or query.",
+    )
+    runs_show_p.set_defaults(func=runs_cmd.run_show)
+
     return parser
 
 
@@ -156,6 +218,15 @@ def main(argv=None):
             top_k=args.top_k,
             format_as=args.format
         )
+
+    if args.command == "runs":
+        if args.runs_command == "list":
+            return runs_cmd.run_list(config_path=args.config,
+                                     limit=args.limit, operation=args.operation)
+
+        elif args.runs_command == "show":
+            return runs_cmd.run_show(config_path=args.config, run_id=args.run_id, latest=args.latest,
+                                     operation=args.operation, detail=args.detailed, format_as=args.format)
 
     parser.print_help()
     return 1
