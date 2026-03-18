@@ -20,6 +20,11 @@ def build_parser() -> argparse.ArgumentParser:
         choices=format_choices,
         help=f"Output format (default: %(default)s). Options: {', '.join(format_choices)}",
     )
+    common_parser.add_argument(
+        "--detailed",
+        action="store_true",
+        help=f"Output format (default: %(default)s). Options: {', '.join(format_choices)}",
+    )
 
     parser = argparse.ArgumentParser(
         prog="raggen",

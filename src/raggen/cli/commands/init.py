@@ -3,9 +3,11 @@ from __future__ import annotations
 from pathlib import Path
 import os
 from raggen.core.config.project import default_project_config
-from raggen.core.ingest.ingest_service import do_ingest
 from raggen.core.store.initializer import init_database
 from raggen.core.bootstrap import bootstrap
+# from raggen.core.results.formats import OutputFormat
+# from raggen.core.results.renderers import get_renderer
+# TODO: add output persistence
 
 
 def run_init(
@@ -14,6 +16,8 @@ def run_init(
     non_interactive: bool = False,
     force: bool = False,
     destructive: bool = False,
+    # format_as: OutputFormat = OutputFormat.JSON,
+    # detailed: bool = False,
 ) -> None:
     root_p = Path(root).resolve()
     cfg = default_project_config(root_p)

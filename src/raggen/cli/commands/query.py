@@ -8,6 +8,7 @@ from raggen.core.query.models import QueryRequest
 from raggen.core.query.service import query
 from raggen.core.results.formats import OutputFormat
 from raggen.core.results.renderers import get_renderer
+from raggen.core.results.projection import project_result
 
 
 def run_query(
@@ -16,6 +17,7 @@ def run_query(
     config_path: str | None = None,
     top_k: int | None = None,
     format_as: OutputFormat = OutputFormat.JSON,
+    detailed: bool = False,
 ) -> int:
     """
     Run a retrieval query and print readable results.
@@ -36,9 +38,10 @@ def run_query(
     )
 
     result = query(request)
+    projected = project_result(result, detail=detailed)
     renderer = get_renderer(format_as)
 
-    print("Ingest finished:\n\n", renderer.render(result))
+    print("Ingest finished:\n\n", renderer.render(projected))
 
     return 0
 

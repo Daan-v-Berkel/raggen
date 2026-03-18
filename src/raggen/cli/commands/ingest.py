@@ -5,12 +5,14 @@ from raggen.core.bootstrap import bootstrap
 from raggen.core.ingest.ingest_service import do_ingest
 from raggen.core.results.formats import OutputFormat
 from raggen.core.results.renderers import get_renderer
+from raggen.core.results.projection import project_result
 
 
 def run_ingest(
     *, config_path: str = ".rag/config.toml",
     destructive: bool = False,
-    format_as: OutputFormat = OutputFormat.JSON
+    format_as: OutputFormat = OutputFormat.JSON,
+    detailed: bool = False,
 ) -> None:
     cfg_path = Path(config_path)
     if not cfg_path.exists():
@@ -18,5 +20,6 @@ def run_ingest(
         return
     _ = bootstrap(cfg_path)
     result = do_ingest(destructive=destructive)
+    projected = project_result(result, detail=detailed)
     renderer = get_renderer(format_as)
-    print("Ingest finished:\n\n", renderer.render(result))
+    print("Ingest finished:\n\n", renderer.render(projected))
