@@ -7,9 +7,12 @@ from raggen.core.runtime import get_engine
 from raggen.core.config.project import ProjectConfig
 from raggen.core.embeddings.embedder import LocalSentenceTransformerEmbedder
 from raggen.core.store.plugin_loader import load_vector_backend
-from raggen.core.results.envelope import ResultEnvelope, ResultMessage
+from raggen.core.results.envelope import ResultEnvelope, ResultMessage, init_result
+from raggen.core.runs.store import get_run_store
+from raggen.core.runs.decorators import persist_result
 
 
+@persist_result(get_run_store)
 def query(request: QueryRequest) -> ResultEnvelope:
     """
     Retrieval-only query flow.
@@ -29,17 +32,14 @@ def query(request: QueryRequest) -> ResultEnvelope:
 
     vector_backend = load_vector_backend(cfg.storage.vector_backend_import)
 
+    query_result = init_result("query")
+
     query_model_id = _resolve_query_model_id(request, cfg)
     query_dim = _resolve_query_dim(cfg)
     normalize = bool(cfg.embedding.normalize)
 
     embedder = LocalSentenceTransformerEmbedder(model_id=query_model_id)
     _validate_query_embedder(embedder, expected_dim=query_dim)
-
-    query_result = ResultEnvelope(
-        operation="query",
-        success=False,
-    )
 
     matrix = embedder.embed_texts(
         [request.text],
@@ -113,7 +113,16 @@ def query(request: QueryRequest) -> ResultEnvelope:
             )
         )
 
-    query_result.data = response
+    query_result.data = {
+        "summary": {
+            "query": response.query,
+            "matches": len(response.matches),
+            "answer": response.answer,
+            "used_query_model": response.used_query_model,
+            "used_llm_model": response.used_llm_model,
+        },
+        "details": response
+    }
 
     return query_result
 

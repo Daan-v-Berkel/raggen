@@ -1,4 +1,4 @@
-from .envelope import ResultEnvelope, ResultMessage, ResultMeta
+from .envelope import ResultEnvelope, ResultMessage, ResultMeta, init_result
 from .formats import OutputFormat
 from .renderers import Renderer, JsonRenderer, XmlRenderer, get_renderer
 
@@ -11,4 +11,5 @@ __all__ = [
     "ResultMeta",
     "ResultMessage",
     "ResultEnvelope",
+    "init_result",
 ]
