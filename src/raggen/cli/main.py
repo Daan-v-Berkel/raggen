@@ -6,20 +6,32 @@ from raggen.cli.commands import (
     init as init_cmd,
     ingest as ingest_cmd,
     query as query_cmd,
+    runs as runs_cmd,
+    build as build_cmd
 )
 from raggen.core.results.formats import OutputFormat
 
-format_choices = [fmt.value for fmt in OutputFormat]
 
-
-def build_parser() -> argparse.ArgumentParser:
+def build_common_parser() -> argparse.ArgumentParser:
     common_parser = argparse.ArgumentParser(add_help=False)
+    format_choices = [fmt.value for fmt in OutputFormat]
     common_parser.add_argument(
         "--format",
         default=OutputFormat.JSON,
         choices=format_choices,
-        help=f"Output format (default: %(default)s). Options: {', '.join(format_choices)}",
+        help=f"Output format (default: json). Options: {', '.join(format_choices)}",
     )
+    common_parser.add_argument(
+        "--detailed",
+        action="store_true",
+        help=f"Output presentation, by default this is truncated, use this flag to get the full output",
+    )
+
+    return common_parser
+
+
+def build_parser() -> argparse.ArgumentParser:
+    common_parser = build_common_parser()
 
     parser = argparse.ArgumentParser(
         prog="raggen",
@@ -41,28 +53,27 @@ def build_parser() -> argparse.ArgumentParser:
     # init
     init_p = sub.add_parser(
         "init",
-        help="Create project configuration and initialize the database.",
         parents=[common_parser],
-        description=(
-            "Initialize a Raggen project in the target root directory.\n"
-            "This creates the .rag configuration directory and initializes the database."
-        ),
-        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+        help="Initialise project scaffold and default configuration",
     )
-    init_p.add_argument(
-        "--root",
-        default=".",
-        help="Project root directory where .rag/ should be created.",
+    init_p.add_argument("root", type=str)
+    init_p.add_argument("--force", action="store_true")
+
+    # build
+    build_p = sub.add_parser(
+        "build",
+        parents=[common_parser],
+        help="Create project storage foundation from configuration",
     )
-    init_p.add_argument(
-        "--non-interactive",
+    build_p.add_argument(
+        "--config",
+        default=".rag/config.toml",
+        help="Path to project config file.",
+    )
+    build_p.add_argument(
+        "--destructive",
         action="store_true",
-        help="Run initialization without interactive prompts, using defaults.",
-    )
-    init_p.add_argument(
-        "--force",
-        action="store_true",
-        help="Overwrite an existing initialization if one is already present.",
+        help="Allow destructive rebuild when foundational configuration has changed.\nTHIS DELETES AND REBUILDS DATABASE",
     )
 
     # ingest
@@ -123,6 +134,62 @@ def build_parser() -> argparse.ArgumentParser:
         help="Maximum number of matching chunks to return.",
     )
 
+    # runs
+    runs_p = sub.add_parser("runs", help="Inspect stored run history")
+    runs_sub = runs_p.add_subparsers(dest="runs_command")
+
+    runs_list_p = runs_sub.add_parser(
+        "list",
+        help="List stored runs",
+    )
+    runs_list_p.add_argument(
+        "--config",
+        default=".rag/config.toml",
+        help="Path to the project configuration TOML file.",
+    )
+    runs_list_p.add_argument(
+        "--limit",
+        type=int,
+        default=20,
+        help="Maximum number of runs to list.",
+    )
+    runs_list_p.add_argument(
+        "--operation",
+        type=str,
+        default=None,
+        help="Filter by operation, e.g. ingest or query.",
+    )
+    runs_list_p.set_defaults(func=runs_cmd.run_list)
+
+    runs_show_p = runs_sub.add_parser(
+        "show",
+        parents=[common_parser],
+        help="Show a stored run result",
+    )
+    runs_show_p.add_argument(
+        "--config",
+        default=".rag/config.toml",
+        help="Path to the project configuration TOML file.",
+    )
+    runs_show_p.add_argument(
+        "run_id",
+        nargs="?",
+        default=None,
+        help="Run ID to show.",
+    )
+    runs_show_p.add_argument(
+        "--latest",
+        action="store_true",
+        help="Show the latest run, optionally filtered by --action.",
+    )
+    runs_show_p.add_argument(
+        "--operation",
+        type=str,
+        default=None,
+        help="Filter latest lookup by operation, e.g. ingest or query.",
+    )
+    runs_show_p.set_defaults(func=runs_cmd.run_show)
+
     return parser
 
 
@@ -133,15 +200,25 @@ def main(argv=None):
     if args.command == "init":
         return init_cmd.run_init(
             root=args.root,
-            non_interactive=args.non_interactive,
             force=args.force,
+            detailed=args.detailed,
+            format_as=args.format
+        )
+
+    if args.command == "build":
+        return build_cmd.run_build(
+            config=args.config,
+            destructive=args.destructive,
+            detailed=args.detailed,
+            format_as=args.format
         )
 
     if args.command == "ingest":
         return ingest_cmd.run_ingest(
             config_path=args.config,
             destructive=args.destructive,
-            format_as=args.format,
+            detailed=args.detailed,
+            format_as=args.format
         )
 
     if args.command == "query":
@@ -149,8 +226,21 @@ def main(argv=None):
             args.text,
             config_path=args.config,
             top_k=args.top_k,
+            detailed=args.detailed,
             format_as=args.format
         )
+
+    if args.command == "runs":
+        if args.runs_command == "list":
+            return runs_cmd.run_list(config_path=args.config,
+                                     limit=args.limit, operation=args.operation,
+                                     detailed=args.detailed,
+                                     format_as=args.format
+                                     )
+
+        elif args.runs_command == "show":
+            return runs_cmd.run_show(config_path=args.config, run_id=args.run_id, latest=args.latest,
+                                     operation=args.operation, detailed=args.detailed, format_as=args.format)
 
     parser.print_help()
     return 1

@@ -53,7 +53,7 @@ def bootstrap(config_path: Optional[Path] = None) -> ProjectConfig:
     if not path.exists():
         raise BootstrapError(
             f"Config file not found: {path}\n"
-            "Run `rag init` to initialize in the current working directory."
+            "Run `rag init` to scaffold the project."
         )
 
     # Defensive check for partial state drift.

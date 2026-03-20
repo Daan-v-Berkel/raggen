@@ -19,21 +19,19 @@ from raggen.core.store import store_document_bundle, delete_documents, load_vect
 from raggen.core.store.metadata_store import fetch_all_document_ids
 from raggen.core.scanner import scan_files
 from raggen.core.runtime import get_engine
-from raggen.core.results.envelope import ResultEnvelope, ResultMessage
+from raggen.core.results.envelope import ResultEnvelope, ResultMessage, init_result
 from datetime import datetime
+from raggen.core.runs.store import get_run_store
+from raggen.core.runs.decorators import persist_result
 
 
+@persist_result(get_run_store)
 def do_ingest(destructive: bool = False) -> ResultEnvelope:
     cfg = ProjectConfig.get_config()
     engine = get_engine()
     backend = load_vector_backend(cfg.storage.vector_backend_import)
 
-    ingest_result = ResultEnvelope(
-        operation="ingest",
-        success=False,
-    )
-    warnings_array: list[ResultMessage] = []
-    errors_array: list[ResultMessage] = []
+    ingest_result = init_result("ingest")
 
     # total files scanned includes skipped empty files
     registry = ParserRegistry(fallback_parser=PlainTextFallbackParser())
@@ -64,7 +62,7 @@ def do_ingest(destructive: bool = False) -> ResultEnvelope:
             if not should_ingest_changed_file(fr, cfg):
                 m = f"Skipping {fr.relative_path}: file already ingested and unchanged"
                 logger.warning(m)
-                warnings_array.append(ResultMessage(
+                ingest_result.warnings.append(ResultMessage(
                     code="unchanged", message=m))
                 skip_count += 1
                 continue
@@ -73,7 +71,7 @@ def do_ingest(destructive: bool = False) -> ResultEnvelope:
             except Exception:
                 m = f"Skipping {fr.relative_path}: could not read file"
                 logger.warning(m)
-                warnings_array.append(ResultMessage(
+                ingest_result.warnings.append(ResultMessage(
                     code="read_error", message=m))
                 skip_count += 1
                 continue
@@ -81,7 +79,7 @@ def do_ingest(destructive: bool = False) -> ResultEnvelope:
             if not ok:
                 m = f"Skipping {fr.relative_path}: empty file (0 bytes)"
                 logger.warning(m)
-                warnings_array.append(ResultMessage(
+                ingest_result.warnings.append(ResultMessage(
                     code="zero_bytes", message=m))
                 skip_count += 1
                 continue
@@ -102,7 +100,7 @@ def do_ingest(destructive: bool = False) -> ResultEnvelope:
                 if not ok2:
                     m = f"Skipping {fr.relative_path}: empty file"
                     logger.warning(m)
-                    warnings_array.append(ResultMessage(
+                    ingest_result.warnings.append(ResultMessage(
                         code="empty_file", message=m))
                     skip_count += 1
                     continue
@@ -171,7 +169,7 @@ def do_ingest(destructive: bool = False) -> ResultEnvelope:
                 emb_count += len(vectors)
             except Exception as exc:
                 log_error(str(fr.path), "ingest", exc)
-                errors_array.append(ResultMessage(
+                ingest_result.errors.append(ResultMessage(
                     code="ingestion_error", message=f"path: {str(fr.path)}, error: {str(exc)}"))
 
     log_stage(
@@ -191,15 +189,10 @@ def do_ingest(destructive: bool = False) -> ResultEnvelope:
         "embeddings": emb_count,
     }
 
-    ingest_result.warnings = [
-        ResultMessage(code=w.code, message=w.message)
-        for w in warnings_array
-    ]
-    ingest_result.errors = [
-        ResultMessage(code=e.code, message=e.message)
-        for e in errors_array
-    ]
     ingest_result.success = True
-    ingest_result.data = result_data
+    ingest_result.data = {
+        "summary": result_data,
+        "details": result_data,
+    }
 
     return ingest_result
