@@ -4,7 +4,7 @@ from pathlib import Path
 from raggen.core.results.renderers import get_renderer
 from raggen.core.results.projection import project_result
 from raggen.core.runs.store import get_run_store
-from raggen.core.bootstrap import bootstrap
+from raggen.core.bootstrap import bootstrap, BootstrapError
 from raggen.core.results.formats import OutputFormat
 
 
@@ -39,10 +39,15 @@ def run_show(
     run_id: str | None = None,
     latest: bool = False,
     operation: str | None = None,
-    detail: bool = False,
+    detailed: bool = False,
     format_as: OutputFormat = OutputFormat.JSON,
 ) -> int:
-    bootstrap(Path(config_path) if config_path else None)
+    try:
+        bootstrap(Path(config_path) if config_path else None)
+    except BootstrapError as e:
+        print(f"Error: {e}")
+        return 1
+
     store = get_run_store()
 
     run_id = run_id
@@ -61,7 +66,7 @@ def run_show(
         return 1
 
     result = store.load_result(run_id)
-    projected = project_result(result, detail=detail)
+    projected = project_result(result, detailed=detailed)
     renderer = get_renderer(format_as)
 
     print(renderer.render(projected))

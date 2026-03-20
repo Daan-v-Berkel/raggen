@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 from textwrap import shorten
 
-from raggen.core.bootstrap import bootstrap
+from raggen.core.bootstrap import bootstrap, BootstrapError
 from raggen.core.query.models import QueryRequest
 from raggen.core.query.service import query
 from raggen.core.results.formats import OutputFormat
@@ -26,11 +26,15 @@ def run_query(
       0 = success
       1 = error / no query text
     """
+    try:
+        bootstrap(Path(config_path) if config_path else None)
+    except BootstrapError as e:
+        print(f"Error: {e}")
+        return 1
+
     if not text or not text.strip():
         print("Query text must not be empty.")
         return 1
-
-    bootstrap(Path(config_path) if config_path else None)
 
     request = QueryRequest(
         text=text,
@@ -38,7 +42,7 @@ def run_query(
     )
 
     result = query(request)
-    projected = project_result(result, detail=detailed)
+    projected = project_result(result, detailed=detailed)
     renderer = get_renderer(format_as)
 
     print("Ingest finished:\n\n", renderer.render(projected))

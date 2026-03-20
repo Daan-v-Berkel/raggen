@@ -8,13 +8,9 @@ from raggen.core.config.project import default_project_config
 from raggen.core.results.envelope import ResultEnvelope, ResultMessage
 from raggen.core.metadata.store import create_project_state, save_project_state
 from raggen.core.metadata.models import ProjectLifecycleState
-# from raggen.core.runs.store import get_run_store
-# from raggen.core.runs.decorators import persist_result
 from raggen.core.results.envelope import init_result
 
 
-# TODO: Decide if init is worth storing as an operation. no for now
-# @persist_result(get_run_store)
 def do_init(
     *,
     root: str = ".",

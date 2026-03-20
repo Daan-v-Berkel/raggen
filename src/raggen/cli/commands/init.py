@@ -18,7 +18,7 @@ def run_init(
         force=force,
     )
 
-    projected = project_result(result, detail=detailed)
+    projected = project_result(result, detailed=detailed)
     renderer = get_renderer(format_as)
     print(renderer.render(projected))
 

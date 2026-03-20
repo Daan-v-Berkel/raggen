@@ -2,26 +2,32 @@ from __future__ import annotations
 
 from pathlib import Path
 from raggen.core.bootstrap import bootstrap, BootstrapError
-from raggen.core.ingest.ingest_service import do_ingest
+from raggen.core.build import do_build
+from raggen.core.results import get_renderer
+from raggen.core.results import project_result
 from raggen.core.results.formats import OutputFormat
-from raggen.core.results.renderers import get_renderer
-from raggen.core.results.projection import project_result
 
 
-def run_ingest(
-    *, config_path: str = ".rag/config.toml",
+def run_build(
+    *,
+    config: str = ".rag/config.toml",
     destructive: bool = False,
     format_as: OutputFormat = OutputFormat.JSON,
     detailed: bool = False,
 ) -> int:
     try:
-        bootstrap(Path(config_path) if config_path else None)
+        bootstrap(Path(config) if config else None)
     except BootstrapError as e:
         print(f"Error: {e}")
         return 1
 
-    result = do_ingest(destructive=destructive)
+    result = do_build(
+        config_path=config,
+        destructive=destructive,
+    )
+
     projected = project_result(result, detailed=detailed)
     renderer = get_renderer(format_as)
-    print("Ingest finished:\n\n", renderer.render(projected))
+    print(renderer.render(projected))
+
     return 0

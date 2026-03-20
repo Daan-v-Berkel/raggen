@@ -6,7 +6,8 @@ from raggen.cli.commands import (
     init as init_cmd,
     ingest as ingest_cmd,
     query as query_cmd,
-    runs as runs_cmd
+    runs as runs_cmd,
+    build as build_cmd
 )
 from raggen.core.results.formats import OutputFormat
 
@@ -57,6 +58,23 @@ def build_parser() -> argparse.ArgumentParser:
     )
     init_p.add_argument("root", type=str)
     init_p.add_argument("--force", action="store_true")
+
+    # build
+    build_p = sub.add_parser(
+        "build",
+        parents=[common_parser],
+        help="Create project storage foundation from configuration",
+    )
+    build_p.add_argument(
+        "--config",
+        default=".rag/config.toml",
+        help="Path to project config file.",
+    )
+    build_p.add_argument(
+        "--destructive",
+        action="store_true",
+        help="Allow destructive rebuild when foundational configuration has changed.\nTHIS DELETES AND REBUILDS DATABASE",
+    )
 
     # ingest
     ingest_p = sub.add_parser(
@@ -183,6 +201,14 @@ def main(argv=None):
         return init_cmd.run_init(
             root=args.root,
             force=args.force,
+            detailed=args.detailed,
+            format_as=args.format
+        )
+
+    if args.command == "build":
+        return build_cmd.run_build(
+            config=args.config,
+            destructive=args.destructive,
             detailed=args.detailed,
             format_as=args.format
         )

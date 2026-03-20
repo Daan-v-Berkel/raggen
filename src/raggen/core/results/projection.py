@@ -1,21 +1,19 @@
 from raggen.core.results.envelope import ResultEnvelope, ResultMessage
-from enum import Enum
-
 
 MAX_SUMMARY_WARNINGS = 3
 
 
-def project_result(result: ResultEnvelope, detail: bool = False) -> ResultEnvelope:
-    if detail:
-        return result
-
+def project_result(result: ResultEnvelope, detailed: bool = False) -> ResultEnvelope:
     projected = result.model_copy(deep=True)
+
+    if detailed:
+        if isinstance(projected.data, dict):
+            projected.data = projected.data.get("details")
+            return projected
 
     # Only keep summary payload in summary mode.
     if isinstance(projected.data, dict):
-        projected.data = {
-            "summary": projected.data.get("summary")
-        }
+        projected.data = projected.data.get("summary")
 
     # Truncate warnings.
     total_warnings = len(projected.warnings)
@@ -26,7 +24,7 @@ def project_result(result: ResultEnvelope, detail: bool = False) -> ResultEnvelo
                 code="WARNINGS_TRUNCATED",
                 message=(
                     f"Showing {MAX_SUMMARY_WARNINGS} of {total_warnings} warnings. "
-                    f"Inspect run '{projected.run_id}' with detail output to view all warnings."
+                    f"Inspect run '{projected.run_id}' with --detailed to view complete output."
                 ),
             )
         )
