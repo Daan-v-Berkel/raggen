@@ -1,6 +1,7 @@
 from .envelope import ResultEnvelope, ResultMessage, ResultMeta, init_result
 from .formats import OutputFormat
 from .renderers import Renderer, JsonRenderer, XmlRenderer, get_renderer
+from .projection import project_result
 
 __all__ = [
     "OutputFormat",
@@ -12,4 +13,5 @@ __all__ = [
     "ResultMessage",
     "ResultEnvelope",
     "init_result",
+    "project_result",
 ]

@@ -18,12 +18,12 @@ def build_common_parser() -> argparse.ArgumentParser:
         "--format",
         default=OutputFormat.JSON,
         choices=format_choices,
-        help=f"Output format (default: %(default)s). Options: {', '.join(format_choices)}",
+        help=f"Output format (default: json). Options: {', '.join(format_choices)}",
     )
     common_parser.add_argument(
         "--detailed",
         action="store_true",
-        help=f"Output format (default: %(default)s). Options: {', '.join(format_choices)}",
+        help=f"Output presentation, by default this is truncated, use this flag to get the full output",
     )
 
     return common_parser
@@ -52,29 +52,11 @@ def build_parser() -> argparse.ArgumentParser:
     # init
     init_p = sub.add_parser(
         "init",
-        help="Create project configuration and initialize the database.",
         parents=[common_parser],
-        description=(
-            "Initialize a Raggen project in the target root directory.\n"
-            "This creates the .rag configuration directory and initializes the database."
-        ),
-        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+        help="Initialise project scaffold and default configuration",
     )
-    init_p.add_argument(
-        "--root",
-        default=".",
-        help="Project root directory where .rag/ should be created.",
-    )
-    init_p.add_argument(
-        "--non-interactive",
-        action="store_true",
-        help="Run initialization without interactive prompts, using defaults.",
-    )
-    init_p.add_argument(
-        "--force",
-        action="store_true",
-        help="Overwrite an existing initialization if one is already present.",
-    )
+    init_p.add_argument("root", type=str)
+    init_p.add_argument("--force", action="store_true")
 
     # ingest
     ingest_p = sub.add_parser(
@@ -200,15 +182,17 @@ def main(argv=None):
     if args.command == "init":
         return init_cmd.run_init(
             root=args.root,
-            non_interactive=args.non_interactive,
             force=args.force,
+            detailed=args.detailed,
+            format_as=args.format
         )
 
     if args.command == "ingest":
         return ingest_cmd.run_ingest(
             config_path=args.config,
             destructive=args.destructive,
-            format_as=args.format,
+            detailed=args.detailed,
+            format_as=args.format
         )
 
     if args.command == "query":
@@ -216,17 +200,21 @@ def main(argv=None):
             args.text,
             config_path=args.config,
             top_k=args.top_k,
+            detailed=args.detailed,
             format_as=args.format
         )
 
     if args.command == "runs":
         if args.runs_command == "list":
             return runs_cmd.run_list(config_path=args.config,
-                                     limit=args.limit, operation=args.operation)
+                                     limit=args.limit, operation=args.operation,
+                                     detailed=args.detailed,
+                                     format_as=args.format
+                                     )
 
         elif args.runs_command == "show":
             return runs_cmd.run_show(config_path=args.config, run_id=args.run_id, latest=args.latest,
-                                     operation=args.operation, detail=args.detailed, format_as=args.format)
+                                     operation=args.operation, detailed=args.detailed, format_as=args.format)
 
     parser.print_help()
     return 1
