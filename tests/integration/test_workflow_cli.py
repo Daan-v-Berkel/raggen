@@ -52,6 +52,10 @@ def test_workflow_init(tmp_path: Path) -> None:
     (project_root / ".gitignore").write_text("ignored_file.txt\n")
     (project_root / "ignored_file.txt").write_text("This file should not be indexed.")
 
+    # Create a directory ignored via scan.ignore config (node_modules/ is in the default)
+    (project_root / "node_modules").mkdir()
+    (project_root / "node_modules" / "package.js").write_text("console.log('ignored');")
+
     # Run `rag ingest` from within the project root
     result = run_cli("ingest", cwd=project_root)
     assert result.returncode == 0, (
@@ -64,7 +68,7 @@ def test_workflow_init(tmp_path: Path) -> None:
     assert_ingest_state(
         project_root,
         expected_docs=["hello.txt", "notes/readme.txt"],
-        unexpected_docs=["ignored_file.txt"],
+        unexpected_docs=["ignored_file.txt", "node_modules/package.js"],
     )
 
     # Extension points (placeholders): future steps will look like:
