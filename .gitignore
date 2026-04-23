@@ -9,6 +9,7 @@ __pycache__/
 # Distribution / packaging
 .Python
 build/
+!src/raggen/core/build/
 dist/
 eggs/
 *.egg-info/
