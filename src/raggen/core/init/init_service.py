@@ -28,7 +28,7 @@ def do_init(
                 code="PROJECT_ALREADY_INITIALISED",
                 message=(
                     "Project already initialised. "
-                    "Edit .rag/config.toml or use --force to recreate the scaffold."
+                    "Use --force to recreate the scaffold. WARNING: deletes entire directory"
                 ),
             )
         )

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 from raggen.core.bootstrap import bootstrap, BootstrapError
-from raggen.core.build import do_build
+from raggen.core.build.build_service import do_build
 from raggen.core.results import get_renderer
 from raggen.core.results import project_result
 from raggen.core.results.formats import OutputFormat
