@@ -54,52 +54,57 @@ class GitIgnoreLike:
         self._rules = list(rules)
 
     @staticmethod
-    def from_ignore_files(root, ignore_files: List[Path]) -> "GitIgnoreLike":
+    def _parse_lines(lines: Iterable[str]) -> list[_Rule]:
+        rules: list[_Rule] = []
+        for raw in lines:
+            line = raw.strip("\n\r")
+            if not line or line.lstrip().startswith("#"):
+                continue
+
+            if line.startswith(r"\#") or line.startswith(r"\!"):
+                line = line[1:]
+
+            negated = line.startswith("!")
+            if negated:
+                line = line[1:]
+
+            anchored = line.startswith("/")
+            if anchored:
+                line = line[1:]
+
+            dir_only = line.endswith("/")
+            if dir_only:
+                line = line[:-1]
+
+            line = line.strip()
+            if not line:
+                continue
+
+            rules.append(
+                _Rule(
+                    pattern=line.replace(os.sep, "/"),
+                    negated=negated,
+                    dir_only=dir_only,
+                    anchored=anchored,
+                )
+            )
+        return rules
+
+    @staticmethod
+    def from_ignore_files(root, ignore_files: List[str | Path]) -> "GitIgnoreLike":
         rules: list[_Rule] = []
         for file in ignore_files:
             ignore_file = root / file
             if not ignore_file.exists():
                 continue
-
-            for raw in ignore_file.read_text(
-                encoding="utf-8", errors="replace"
-            ).splitlines():
-                line = raw.strip("\n\r")
-                if not line or line.lstrip().startswith("#"):
-                    continue
-
-                # allow escaping a leading '#' or '!' with backslash
-                if line.startswith(r"\#") or line.startswith(r"\!"):
-                    line = line[1:]
-
-                negated = line.startswith("!")
-                if negated:
-                    line = line[1:]
-
-                anchored = line.startswith("/")
-                if anchored:
-                    line = line[1:]
-
-                dir_only = line.endswith("/")
-                if dir_only:
-                    line = line[:-1]
-
-                line = line.strip()
-                if not line:
-                    continue
-
-                # normalize to posix-ish matching
-                pattern = line.replace(os.sep, "/")
-                rules.append(
-                    _Rule(
-                        pattern=pattern,
-                        negated=negated,
-                        dir_only=dir_only,
-                        anchored=anchored,
-                    )
-                )
-
+            lines = ignore_file.read_text(encoding="utf-8", errors="replace").splitlines()
+            rules.extend(GitIgnoreLike._parse_lines(lines))
         return GitIgnoreLike(rules)
+
+    @staticmethod
+    def from_patterns(patterns: List[str]) -> "GitIgnoreLike":
+        """Build a matcher from a list of raw inline pattern strings."""
+        return GitIgnoreLike(GitIgnoreLike._parse_lines(patterns))
 
     def ignores(self, rel_posix_path: str, is_dir: bool) -> bool:
         """
@@ -185,18 +190,21 @@ def scan_files(
     root_dir: str | Path,
     *,
     ignore_filenames: List[str],
+    ignore_patterns: List[str] | None = None,
     follow_symlinks: bool = False,
     include_hidden: bool = True,
 ) -> ScanResult:
     """
     Recursively scan from root_dir and yield FileRef for each file encountered,
-    respecting ignore rules from <root_dir>/<ignore_filename>.
-    And always ingoring it's own directory (.rag/).
+    respecting ignore rules from <root_dir>/<ignore_filename> and any inline
+    ignore_patterns. Always ignores the .rag/ directory.
 
     ignore rules apply to *relative paths* under root_dir.
     """
     root = Path(root_dir).resolve()
-    ignore = GitIgnoreLike.from_ignore_files(root, ignore_filenames)
+    file_rules = GitIgnoreLike.from_ignore_files(root, ignore_filenames)
+    inline_rules = GitIgnoreLike.from_patterns(ignore_patterns or [])
+    ignore = GitIgnoreLike(file_rules._rules + inline_rules._rules)
     # groups: dict[str, list[FileRef]] = {
     #     "code": [],
     #     "document": [],

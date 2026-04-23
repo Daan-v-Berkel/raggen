@@ -46,7 +46,10 @@ def do_ingest(destructive: bool = False) -> ResultEnvelope:
     db_files = set(fetch_all_document_ids(engine))
 
     scanned = scan_files(
-        cfg.project_root, ignore_filenames=cfg.scan.ignore_files)
+        cfg.project_root,
+        ignore_filenames=cfg.scan.ignore_files,
+        ignore_patterns=cfg.scan.ignore,
+    )
 
     chunk_registry = ChunkerRegistry()
 
