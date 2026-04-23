@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from tests.integration.helpers import (
@@ -34,5 +35,11 @@ def assert_init_state(root: Path) -> None:
     assert "updated_at" in state
     assert isinstance(state["updated_at"], str)
     assert "T" in state["updated_at"], f"Unexpected updated_at: {state['updated_at']}"
+
+    updated_at = datetime.fromisoformat(state["updated_at"])
+    threshold = datetime.now(timezone.utc) - timedelta(minutes=2)
+    assert updated_at >= threshold, (
+        f"State timestamp is too old: {state['updated_at']}"
+    )
 
     assert state.get("state") == "initialised"

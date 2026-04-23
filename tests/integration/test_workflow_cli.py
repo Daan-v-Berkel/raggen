@@ -3,8 +3,9 @@ from __future__ import annotations
 from pathlib import Path
 import pytest
 
-from tests.integration.helpers import build_command, run_cli, rag_config_path, rag_project_state_path
+from tests.integration.helpers import run_cli
 from tests.integration.assert_init import assert_init_layout, assert_init_state
+from tests.integration.assert_build import assert_build_layout, assert_build_state
 
 
 @pytest.mark.integration
@@ -30,11 +31,18 @@ def test_workflow_init(tmp_path: Path) -> None:
     assert_init_layout(project_root)
     assert_init_state(project_root)
 
-    # Extension points (placeholders): future steps will look like:
-    # result = run_cli("build", str(project_root))
-    # assert result.returncode == 0
-    # assert_build(project_root)
+    # Run `rag build` from within the project root
+    result = run_cli("build", cwd=project_root)
+    assert result.returncode == 0, (
+        f"CLI failed unexpectedly.\n"
+        f"STDOUT:\n{result.stdout}\n"
+        f"STDERR:\n{result.stderr}"
+    )
 
+    assert_build_layout(project_root)
+    assert_build_state(project_root)
+
+    # Extension points (placeholders): future steps will look like:
     # result = run_cli("ingest", str(project_root))
     # assert result.returncode == 0
     # assert_ingest(project_root)
