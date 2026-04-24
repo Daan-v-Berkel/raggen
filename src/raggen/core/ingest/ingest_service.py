@@ -36,7 +36,12 @@ def do_ingest(destructive: bool = False) -> ResultEnvelope:
     # total files scanned includes skipped empty files
     registry = ParserRegistry(fallback_parser=PlainTextFallbackParser())
     parser_service = ParserService(registry)
-    embedder = LocalSentenceTransformerEmbedder(cfg.embedding.model_id)
+    embedder = LocalSentenceTransformerEmbedder(
+        cfg.embedding.model_id,
+        cache_dir=cfg.embedding.model_cache_dir,
+        batch_size=cfg.embedding.batch_size,
+        normalize=cfg.embedding.normalize,
+    )
     doc_count = 0
     chunk_count = 0
     emb_count = 0
@@ -128,12 +133,7 @@ def do_ingest(destructive: bool = False) -> ResultEnvelope:
                     continue
                 chunks = chunker.chunk(doc)
                 # embed
-                em_results = embed_chunks(
-                    embedder,
-                    chunks,
-                    batch_size=cfg.embedding.batch_size,
-                    normalize=cfg.embedding.normalize,
-                )
+                em_results = embed_chunks(embedder, chunks)
                 # build rows
                 document_row = {
                     "doc_id": doc.doc_id,

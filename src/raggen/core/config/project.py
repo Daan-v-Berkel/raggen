@@ -47,6 +47,7 @@ def _default_chunking():
 @dataclass
 class EmbeddingConfig(TOMLDataclass):
     model_id: str = "sentence-transformers/all-MiniLM-L6-v2"
+    model_cache_dir: str = ".rag/models/"
     dim: int = 384
     normalize: bool = True
     batch_size: int = 32

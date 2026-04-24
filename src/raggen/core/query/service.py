@@ -36,16 +36,15 @@ def query(request: QueryRequest) -> ResultEnvelope:
 
     query_model_id = _resolve_query_model_id(request, cfg)
     query_dim = _resolve_query_dim(cfg)
-    normalize = bool(cfg.embedding.normalize)
 
-    embedder = LocalSentenceTransformerEmbedder(model_id=query_model_id)
+    embedder = LocalSentenceTransformerEmbedder(
+        model_id=query_model_id,
+        cache_dir=cfg.embedding.model_cache_dir,
+        normalize=cfg.embedding.normalize,
+    )
     _validate_query_embedder(embedder, expected_dim=query_dim)
 
-    matrix = embedder.embed_texts(
-        [request.text],
-        batch_size=1,
-        normalize=normalize,
-    )
+    matrix = embedder.embed_texts([request.text], batch_size=1)
     query_vector = matrix[0].tolist()
 
     search_results = vector_backend.search(
