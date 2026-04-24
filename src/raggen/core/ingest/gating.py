@@ -45,12 +45,11 @@ def should_ingest_changed_file(fr: FileRef, cfg: ProjectConfig) -> bool:
     Checks for duplicate in database (already ingested) by mtime & byte size.
     """
     engine = get_engine()
-    conn = engine.connect()
-    sel = select(documents.c.doc_id, documents.c.byte_size, documents.c.mtime_ns).where(
-        documents.c.doc_id == fr.relative_path
-    )
-    res = conn.execute(sel).fetchone()
-    conn.close()
+    with engine.connect() as conn:
+        sel = select(documents.c.doc_id, documents.c.byte_size, documents.c.mtime_ns).where(
+            documents.c.doc_id == fr.relative_path
+        )
+        res = conn.execute(sel).fetchone()
 
     if not res:
         # new file

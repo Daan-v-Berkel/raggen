@@ -63,7 +63,8 @@ def do_ingest(destructive: bool = False) -> ResultEnvelope:
             current_files.add(fr.relative_path)
             # gating: raw bytes
             if not should_ingest_changed_file(fr, cfg):
-                m = f"Skipping {fr.relative_path}: file already ingested and unchanged"
+                m = f"Skipping {
+                    fr.relative_path}: file already ingested and unchanged"
                 logger.warning(m)
                 ingest_result.warnings.append(ResultMessage(
                     code="unchanged", message=m))
@@ -97,6 +98,24 @@ def do_ingest(destructive: bool = False) -> ResultEnvelope:
                     filename=Path(fr.path).name,
                 )
                 result = parser_service.parse_document(inp)
+                if result.encoding_error_ratio > cfg.scan.max_encoding_error_ratio:
+                    m = (
+                        f"Skipping {fr.relative_path}: "
+                        f"{result.encoding_error_ratio:.1%} of content is invalid UTF-8 "
+                        f"(threshold: {cfg.scan.max_encoding_error_ratio:.1%}). "
+                        "File is likely binary or severely corrupted."
+                    )
+                    logger.warning(m)
+                    ingest_result.warnings.append(
+                        ResultMessage(code="binary_or_corrupt", message=m)
+                    )
+                    skip_count += 1
+                    continue
+                for w in result.warnings:
+                    logger.warning(w)
+                    ingest_result.warnings.append(
+                        ResultMessage(code="encoding_warning", message=w)
+                    )
                 doc = result.document
                 # gating: parsed document
                 ok2, reason2 = should_ingest_parsed_document(doc)
@@ -131,6 +150,7 @@ def do_ingest(destructive: bool = False) -> ResultEnvelope:
                 chunk_rows = []
                 embedding_meta_rows = []
                 vectors = []
+                ts = datetime.now().isoformat(timespec='seconds')
                 for ch, em in zip(chunks, em_results):
                     chunk_rows.append(
                         {
@@ -144,7 +164,7 @@ def do_ingest(destructive: bool = False) -> ResultEnvelope:
                             "page_number": getattr(ch, "page_number", None),
                             "heading_path_json": getattr(ch, "heading_path_json", None),
                             "chunk_config_hash": ch.config_hash,
-                            "created_at": "",
+                            "created_at": ts,
                         }
                     )
                     embedding_meta_rows.append(
@@ -153,7 +173,7 @@ def do_ingest(destructive: bool = False) -> ResultEnvelope:
                             "embedding_model_id": cfg.embedding.model_id,
                             "dim": cfg.embedding.dim,
                             "normalized": 1 if cfg.embedding.normalize else 0,
-                            "created_at": "",
+                            "created_at": ts,
                         }
                     )
                     vectors.append((ch.chunk_id, em.vector.tolist()))

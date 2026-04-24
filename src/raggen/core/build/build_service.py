@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import pathlib
 from raggen.core.config.project import ProjectConfig
 from raggen.core.metadata.compare import changed_foundation_fields
 from raggen.core.metadata.models import ProjectLifecycleState
@@ -25,7 +26,7 @@ def do_build(
 
     cfg = ProjectConfig.get_config()
     root_p = cfg.project_root
-    cfg_path = root_p / config_path
+    cfg_path = pathlib.Path.joinpath(root_p, config_path)
 
     state_path = project_state_path(root_p)
 

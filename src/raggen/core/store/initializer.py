@@ -55,7 +55,6 @@ def validate_existing_project(engine: Engine, cfg: ProjectConfig) -> None:
     except Exception:
         # Table may not exist yet; treat as no stored project
         res = None
-    print(f"RESULT FROM STORED PROJECT:\n{res}")
     conn.close()
     if not res:
         return
@@ -63,7 +62,8 @@ def validate_existing_project(engine: Engine, cfg: ProjectConfig) -> None:
 
     if diffs:
         raise SchemaMismatchError(
-            f"Stored project configuration differs: {json.dumps(diffs, indent=2)}\nRun with destructive=True to reinitialize."
+            f"Stored project configuration differs: {json.dumps(
+                diffs, indent=2)}\nRun with destructive=True to reinitialize."
         )
 
 
@@ -106,7 +106,8 @@ def init_database(cfg: ProjectConfig, *, destructive: bool = False) -> Engine:
 
     if not backend.supports(engine):
         raise BackendNotSupportedError(
-            f"Backend '{backend.key}' does not support engine dialect '{engine.dialect.name}'"
+            f"Backend '{backend.key}' does not support engine dialect '{
+                engine.dialect.name}'"
         )
 
     existing = _fetch_project_row(engine)

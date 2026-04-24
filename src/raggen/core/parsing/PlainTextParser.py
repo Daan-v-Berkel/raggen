@@ -26,7 +26,19 @@ class PlainTextFallbackParser:
         if not inp.data:
             raise ValueError("ParseInput.data is empty")
 
-        raw = inp.data.decode("utf-8", errors="replace")
+        warnings = []
+        encoding_error_ratio = 0.0
+        try:
+            raw = inp.data.decode("utf-8", errors="strict")
+        except UnicodeDecodeError:
+            raw = inp.data.decode("utf-8", errors="replace")
+            replacement_count = raw.count("\ufffd")
+            encoding_error_ratio = replacement_count / max(len(raw), 1)
+            warnings.append(
+                f"{inp.doc_id}: file contains invalid UTF-8 bytes "
+                f"({replacement_count} replacement characters, "
+                f"{encoding_error_ratio:.1%} of content)."
+            )
 
         raw = _normalize_line_endings(raw)
         paragraphs = _split_paragraphs_drop_empty(raw)
@@ -53,4 +65,6 @@ class PlainTextFallbackParser:
             document=doc,
             parser_id=self.parser_id,
             effective_mimetype=effective,
+            warnings=warnings,
+            encoding_error_ratio=encoding_error_ratio,
         )
