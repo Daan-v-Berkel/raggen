@@ -37,8 +37,6 @@ def store_document_bundle(
         store.upsert_document(conn, document_row)
         store.upsert_chunks(conn, chunk_rows)
         store.upsert_embedding_meta(conn, embedding_meta_rows)
-        # call vector backend - backends expect Engine or Connection; prefer conn if supported
-        # Let backend accept either a Connection or Engine. Prefer passing the connection to avoid nested transactions.
         vector_backend.upsert_vectors(
             conn,
             vectors=embeddings,
@@ -62,6 +60,6 @@ def delete_documents(
 
     with engine.begin() as conn:
         chunk_ids = store.fetch_all_chunk_ids(conn, documents)
-        vector_backend.delete_vectors(engine, chunks=chunk_ids)
+        vector_backend.delete_vectors(conn, chunks=chunk_ids)
         store.delete_documents(conn, documents)
     return len(documents)
