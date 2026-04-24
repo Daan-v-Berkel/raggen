@@ -17,9 +17,9 @@ def build_common_parser() -> argparse.ArgumentParser:
     format_choices = [fmt.value for fmt in OutputFormat]
     common_parser.add_argument(
         "--format",
-        default=OutputFormat.JSON,
+        default=OutputFormat.TEXT,
         choices=format_choices,
-        help=f"Output format (default: json). Options: {', '.join(format_choices)}",
+        help=f"Output format (default: text). Options: {', '.join(format_choices)}",
     )
     common_parser.add_argument(
         "--detailed",
@@ -140,6 +140,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     runs_list_p = runs_sub.add_parser(
         "list",
+        parents=[common_parser],
         help="List stored runs",
     )
     runs_list_p.add_argument(
