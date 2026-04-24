@@ -50,7 +50,7 @@ def test_empty_raw_file_is_skipped(tmp_path, monkeypatch):
     # Prevent heavy model loading
     monkeypatch.chdir(root)
     monkeypatch.setattr("raggen.core.ingest.ingest_service.LocalSentenceTransformerEmbedder",
-                        lambda model_id: _dummy_embedder_factory())
+                        lambda model_id, **kwargs: _dummy_embedder_factory())
 
     # Ensure parser is NOT called
     def _fail_parse(self, inp):
@@ -92,7 +92,7 @@ def test_empty_parsed_document_is_skipped(tmp_path, monkeypatch):
     # Prevent heavy model loading
     monkeypatch.chdir(root)
     monkeypatch.setattr("raggen.core.ingest.ingest_service.LocalSentenceTransformerEmbedder",
-                        lambda model_id: _dummy_embedder_factory())
+                        lambda model_id, **kwargs: _dummy_embedder_factory())
 
     # Make parser return an empty-text document
     def _empty_parse(self, inp):
@@ -142,7 +142,7 @@ def test_whitespace_only_file_is_skipped(tmp_path, monkeypatch):
     monkeypatch.chdir(root)
 
     monkeypatch.setattr("raggen.core.ingest.ingest_service.LocalSentenceTransformerEmbedder",
-                        lambda model_id: _dummy_embedder_factory())
+                        lambda model_id, **kwargs: _dummy_embedder_factory())
 
     def _ws_parse(self, inp):
         doc = SimpleNamespace(
