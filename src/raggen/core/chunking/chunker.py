@@ -66,8 +66,13 @@ class ChunkerRegistry:
         Return a chunker for the given group.
         Unknown groups resolve to the configured fallback group.
         """
+        if group not in self.group_configs:
+            available = list(self.group_configs.keys())
+            raise ValueError(
+                f"No chunking config registered for group '{group}'. "
+                f"Available groups: {available}"
+            )
         chunk_config = self.group_configs[group]
-
         return self._build_chunker(chunk_config)
 
     def _build_chunker(self, conf: GroupChunkingConfig) -> BaseChunker:
@@ -127,7 +132,6 @@ def _enrich_chunks(
 
     This version does not rely on char offsets.
     """
-    # TODO:calculate cnfig_hash once per config
     config_hash = _stable_config_hash(conf)
     doc_id = getattr(doc, "doc_id", "unknown")
     source = getattr(doc, "source", None)

@@ -63,7 +63,7 @@ def query(request: QueryRequest) -> ResultEnvelope:
     )
 
     if not search_results:
-        response
+        return query_result
 
     chunk_ids = [chunk_id for chunk_id, _score in search_results]
     score_by_chunk_id = {chunk_id: score for chunk_id, score in search_results}

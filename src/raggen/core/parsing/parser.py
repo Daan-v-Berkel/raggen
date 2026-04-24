@@ -32,6 +32,7 @@ class ParseResult(BaseModel):
     document: Document
     parser_id: str  # e.g. "docx:v1", "plaintext:v1"
     effective_mimetype: str  # after normalization/fallback selection
+    warnings: list[str] = []
 
 
 class Parser(Protocol):

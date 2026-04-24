@@ -97,7 +97,7 @@ def test_empty_parsed_document_is_skipped(tmp_path, monkeypatch):
     # Make parser return an empty-text document
     def _empty_parse(self, inp):
         doc = SimpleNamespace(doc_id=inp.doc_id, text="", source=inp.doc_id)
-        return SimpleNamespace(document=doc)
+        return SimpleNamespace(document=doc, warnings=[])
     monkeypatch.setattr(ParserService, "parse_document", _empty_parse)
 
     # Ensure chunker is NOT called
@@ -147,7 +147,7 @@ def test_whitespace_only_file_is_skipped(tmp_path, monkeypatch):
     def _ws_parse(self, inp):
         doc = SimpleNamespace(
             doc_id=inp.doc_id, text="   \n  ", source=inp.doc_id)
-        return SimpleNamespace(document=doc)
+        return SimpleNamespace(document=doc, warnings=[])
     monkeypatch.setattr(ParserService, "parse_document", _ws_parse)
 
     chunker = ChunkerRegistry().get("fallback")
