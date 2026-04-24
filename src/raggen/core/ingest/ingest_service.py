@@ -98,6 +98,19 @@ def do_ingest(destructive: bool = False) -> ResultEnvelope:
                     filename=Path(fr.path).name,
                 )
                 result = parser_service.parse_document(inp)
+                if result.encoding_error_ratio > cfg.scan.max_encoding_error_ratio:
+                    m = (
+                        f"Skipping {fr.relative_path}: "
+                        f"{result.encoding_error_ratio:.1%} of content is invalid UTF-8 "
+                        f"(threshold: {cfg.scan.max_encoding_error_ratio:.1%}). "
+                        "File is likely binary or severely corrupted."
+                    )
+                    logger.warning(m)
+                    ingest_result.warnings.append(
+                        ResultMessage(code="binary_or_corrupt", message=m)
+                    )
+                    skip_count += 1
+                    continue
                 for w in result.warnings:
                     logger.warning(w)
                     ingest_result.warnings.append(

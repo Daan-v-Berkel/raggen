@@ -11,6 +11,7 @@ import json
 class ScanConfig(TOMLDataclass):
     ignore_files: List[str] = field(default_factory=lambda: [".gitignore"])
     ignore: List[str] = field(default_factory=lambda: [".venv/", "node_modules/"])
+    max_encoding_error_ratio: float = 0.05
 
 
 @dataclass
