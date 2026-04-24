@@ -27,12 +27,13 @@ def _resolve_cache_dir(cache_dir: str | None) -> Path | None:
 
 
 def _local_model_path(cache_dir: Path, model_id: str) -> Path:
-    """Returns the expected on-disk path for a model inside cache_dir."""
+    """Returns the expected on-disk path for a manually-placed model inside cache_dir."""
     return cache_dir / model_id
 
 
 def _is_valid_local_model(path: Path) -> bool:
     return (path / "config.json").exists()
+
 
 
 class LocalSentenceTransformerEmbedder:
@@ -63,9 +64,9 @@ class LocalSentenceTransformerEmbedder:
                     str(local_path), device="cpu", local_files_only=True
                 )
             else:
-                self._model = SentenceTransformer(
-                    model_id, device="cpu", cache_folder=str(resolved)
-                )
+                self._model = SentenceTransformer(model_id, device="cpu")
+                local_path.mkdir(parents=True, exist_ok=True)
+                self._model.save(str(local_path))
         else:
             self._model = SentenceTransformer(model_id, device="cpu")
 
