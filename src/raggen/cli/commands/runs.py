@@ -10,7 +10,7 @@ from raggen.core.results.formats import OutputFormat
 
 def run_list(
     config_path: str | None = None,
-    limit: int | None = 0,
+    limit: int = 20,
     operation: str | None = None,
     detailed: bool = False,
     format_as: OutputFormat = OutputFormat.TEXT,

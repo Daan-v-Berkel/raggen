@@ -17,9 +17,9 @@ def build_common_parser() -> argparse.ArgumentParser:
     format_choices = [fmt.value for fmt in OutputFormat]
     common_parser.add_argument(
         "--format",
-        default=OutputFormat.TEXT,
+        default=OutputFormat.TEXT.value,
         choices=format_choices,
-        help=f"Output format (default: text). Options: {', '.join(format_choices)}",
+        help=f"Output format. Options: {', '.join(format_choices)}",
     )
     common_parser.add_argument(
         "--detailed",
@@ -141,7 +141,14 @@ def build_parser() -> argparse.ArgumentParser:
     runs_list_p = runs_sub.add_parser(
         "list",
         parents=[common_parser],
+        conflict_handler="resolve",
         help="List stored runs",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+    )
+    runs_list_p.add_argument(
+        "--detailed",
+        action="store_true",
+        help="No-op for this command: list output is always the same regardless of this flag.",
     )
     runs_list_p.add_argument(
         "--config",
