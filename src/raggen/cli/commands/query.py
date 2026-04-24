@@ -42,10 +42,11 @@ def run_query(
     )
 
     result = query(request)
-    projected = project_result(result, detailed=detailed)
+    use_detailed = detailed or format_as == OutputFormat.TEXT
+    projected = project_result(result, detailed=use_detailed)
     renderer = get_renderer(format_as)
 
-    print("Ingest finished:\n\n", renderer.render(projected))
+    print(renderer.render(projected))
 
     return 0
 

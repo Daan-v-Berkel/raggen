@@ -10,18 +10,23 @@ from raggen.core.results.formats import OutputFormat
 
 def run_list(
     config_path: str | None = None,
-    limit: int | None = 0,
+    limit: int = 20,
     operation: str | None = None,
+    detailed: bool = False,
+    format_as: OutputFormat = OutputFormat.TEXT,
 ) -> int:
     bootstrap(Path(config_path) if config_path else None)
     store = get_run_store()
     runs = store.list_runs(limit=limit, operation=operation)
+    if not detailed and len(runs) > 20:
+        runs = runs[:20]
 
     if not runs:
         print("No runs found.")
         return 0
 
-    print(f"{'RUN ID':<40} {'OPERATION':<12} {'CREATED':<32} {'OK':<6} {'WARN':<6} {'ERR':<6}")
+    print(f"{'RUN ID':<40} {'OPERATION':<12} {
+          'CREATED':<32} {'OK':<6} {'WARN':<6} {'ERR':<6}")
     for run in runs:
         print(
             f"{run.run_id:<40} "
