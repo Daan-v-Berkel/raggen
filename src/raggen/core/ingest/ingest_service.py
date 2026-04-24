@@ -36,7 +36,7 @@ def do_ingest(destructive: bool = False) -> ResultEnvelope:
     # total files scanned includes skipped empty files
     registry = ParserRegistry(fallback_parser=PlainTextFallbackParser())
     parser_service = ParserService(registry)
-    embedder = LocalSentenceTransformerEmbedder(cfg.embedding.model_id)
+    embedder = LocalSentenceTransformerEmbedder(cfg.embedding.model_id, cache_dir=cfg.embedding.model_cache_dir)
     doc_count = 0
     chunk_count = 0
     emb_count = 0

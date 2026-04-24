@@ -38,7 +38,7 @@ def query(request: QueryRequest) -> ResultEnvelope:
     query_dim = _resolve_query_dim(cfg)
     normalize = bool(cfg.embedding.normalize)
 
-    embedder = LocalSentenceTransformerEmbedder(model_id=query_model_id)
+    embedder = LocalSentenceTransformerEmbedder(model_id=query_model_id, cache_dir=cfg.embedding.model_cache_dir)
     _validate_query_embedder(embedder, expected_dim=query_dim)
 
     matrix = embedder.embed_texts(

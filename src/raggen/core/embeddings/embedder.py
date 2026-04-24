@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import List, Sequence, Optional, Any
+from pathlib import Path
+from typing import List, Sequence
 import numpy as np
 
 try:
@@ -18,6 +19,22 @@ class EmbeddingResult:
     vector: np.ndarray  # shape: (dim,)
 
 
+def _resolve_cache_dir(cache_dir: str | None) -> Path | None:
+    if not cache_dir:
+        return None
+    p = Path(cache_dir)
+    return p.expanduser().resolve() if not p.is_absolute() else p
+
+
+def _local_model_path(cache_dir: Path, model_id: str) -> Path:
+    """Returns the expected on-disk path for a model inside cache_dir."""
+    return cache_dir / model_id
+
+
+def _is_valid_local_model(path: Path) -> bool:
+    return (path / "config.json").exists()
+
+
 class LocalSentenceTransformerEmbedder:
     """
     Minimal CPU embedder using sentence-transformers.
@@ -27,14 +44,29 @@ class LocalSentenceTransformerEmbedder:
     - If you change model_id, dimension may change, so store model_id with vectors.
     """
 
-    def __init__(self, model_id: str = "sentence-transformers/all-MiniLM-L6-v2"):
+    def __init__(
+        self,
+        model_id: str = "sentence-transformers/all-MiniLM-L6-v2",
+        cache_dir: str | None = None,
+    ):
         self.model_id = model_id
-        # device="cpu" is explicit; normalize_embeddings helps cosine similarity later.
-        self._model = SentenceTransformer(model_id, device="cpu")
+        resolved = _resolve_cache_dir(cache_dir)
+
+        if resolved is not None:
+            local_path = _local_model_path(resolved, model_id)
+            if _is_valid_local_model(local_path):
+                self._model = SentenceTransformer(
+                    str(local_path), device="cpu", local_files_only=True
+                )
+            else:
+                self._model = SentenceTransformer(
+                    model_id, device="cpu", cache_folder=str(resolved)
+                )
+        else:
+            self._model = SentenceTransformer(model_id, device="cpu")
 
     @property
     def dim(self) -> int:
-        # sentence-transformers can give this
         return int(self._model.get_sentence_embedding_dimension())
 
     def embed_texts(
@@ -43,73 +75,36 @@ class LocalSentenceTransformerEmbedder:
         batch_size: int = 32,
         normalize: bool = True,
     ) -> np.ndarray:
-        """
-        Returns a 2D array: shape (n, dim), dtype float32.
-        """
+        """Returns a 2D array: shape (n, dim), dtype float32."""
         vectors = self._model.encode(
             list(texts),
             batch_size=batch_size,
             show_progress_bar=False,
             normalize_embeddings=normalize,
         )
-        # ensure numpy float32
-        vectors = np.asarray(vectors, dtype=np.float32)
-        return vectors
+        return np.asarray(vectors, dtype=np.float32)
 
 
 def embed_chunks(
     embedder: LocalSentenceTransformerEmbedder,
-    chunks: Sequence[Any],
+    chunks: Sequence,
     *,
     batch_size: int = 32,
     normalize: bool = True,
-    cache_get: Optional[callable] = None,
-    cache_put: Optional[callable] = None,
 ) -> List[EmbeddingResult]:
     """
-    Minimal chunk embedding function.
+    Embed a sequence of chunks.
 
     `chunks` must have:
       - chunk.chunk_id (str)
       - chunk.text (str)
     """
-    results: List[EmbeddingResult] = []
+    texts = [getattr(ch, "text") for ch in chunks]
+    ids = [getattr(ch, "chunk_id") for ch in chunks]
 
-    # 1) Split into cached vs missing
-    missing_ids: List[str] = []
-    missing_texts: List[str] = []
+    matrix = embedder.embed_texts(texts, batch_size=batch_size, normalize=normalize)
 
-    for ch in chunks:
-        cid = getattr(ch, "chunk_id")
-        txt = getattr(ch, "text")
+    if matrix.shape[0] != len(ids):
+        raise RuntimeError("Embedding output row count mismatch.")
 
-        if cache_get is not None:
-            cached = cache_get(cid, embedder.model_id)
-            if cached is not None:
-                vec = np.asarray(cached, dtype=np.float32)
-                if vec.ndim != 1:
-                    raise ValueError(f"Cached vector for {cid} is not 1D.")
-                results.append(EmbeddingResult(chunk_id=cid, vector=vec))
-                continue
-
-        missing_ids.append(cid)
-        missing_texts.append(txt)
-
-    # 2) Embed missing in batches
-    if missing_texts:
-        matrix = embedder.embed_texts(
-            missing_texts, batch_size=batch_size, normalize=normalize
-        )
-        if matrix.shape[0] != len(missing_ids):
-            raise RuntimeError("Embedding output row count mismatch.")
-
-        for cid, vec in zip(missing_ids, matrix):
-            # vec is 1D (dim,)
-            if cache_put is not None:
-                cache_put(cid, embedder.model_id, vec)
-            results.append(EmbeddingResult(chunk_id=cid, vector=vec))
-
-    # 3) Return in same order as input chunks (important for pipeline predictability)
-    order = {getattr(ch, "chunk_id"): i for i, ch in enumerate(chunks)}
-    results.sort(key=lambda r: order[r.chunk_id])
-    return results
+    return [EmbeddingResult(chunk_id=cid, vector=vec) for cid, vec in zip(ids, matrix)]
