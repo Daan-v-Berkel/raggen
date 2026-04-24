@@ -48,8 +48,12 @@ class LocalSentenceTransformerEmbedder:
         self,
         model_id: str = "sentence-transformers/all-MiniLM-L6-v2",
         cache_dir: str | None = None,
+        batch_size: int = 32,
+        normalize: bool = True,
     ):
         self.model_id = model_id
+        self.batch_size = batch_size
+        self.normalize = normalize
         resolved = _resolve_cache_dir(cache_dir)
 
         if resolved is not None:
@@ -72,15 +76,15 @@ class LocalSentenceTransformerEmbedder:
     def embed_texts(
         self,
         texts: Sequence[str],
-        batch_size: int = 32,
-        normalize: bool = True,
+        batch_size: int | None = None,
+        normalize: bool | None = None,
     ) -> np.ndarray:
         """Returns a 2D array: shape (n, dim), dtype float32."""
         vectors = self._model.encode(
             list(texts),
-            batch_size=batch_size,
+            batch_size=batch_size if batch_size is not None else self.batch_size,
             show_progress_bar=False,
-            normalize_embeddings=normalize,
+            normalize_embeddings=normalize if normalize is not None else self.normalize,
         )
         return np.asarray(vectors, dtype=np.float32)
 
@@ -88,9 +92,6 @@ class LocalSentenceTransformerEmbedder:
 def embed_chunks(
     embedder: LocalSentenceTransformerEmbedder,
     chunks: Sequence,
-    *,
-    batch_size: int = 32,
-    normalize: bool = True,
 ) -> List[EmbeddingResult]:
     """
     Embed a sequence of chunks.
@@ -102,7 +103,7 @@ def embed_chunks(
     texts = [getattr(ch, "text") for ch in chunks]
     ids = [getattr(ch, "chunk_id") for ch in chunks]
 
-    matrix = embedder.embed_texts(texts, batch_size=batch_size, normalize=normalize)
+    matrix = embedder.embed_texts(texts)
 
     if matrix.shape[0] != len(ids):
         raise RuntimeError("Embedding output row count mismatch.")
