@@ -1,7 +1,7 @@
 from __future__ import annotations
 from typing import List, Tuple
 from sqlalchemy import text, bindparam
-from sqlalchemy.engine import Engine
+from sqlalchemy.engine import Engine, Connection
 
 from .base import VectorBackend
 
@@ -27,7 +27,7 @@ class TestingVectorBackend(VectorBackend):
 
     def upsert_vectors(
         self,
-        engine_or_conn,
+        conn: Connection,
         *,
         vectors: List[Tuple[str, List[float]]],
         embedding_model_id: str,
@@ -47,32 +47,19 @@ class TestingVectorBackend(VectorBackend):
             INSERT OR REPLACE INTO chunk_vectors(chunk_id, embedding_json)
             VALUES (:chunk_id, :embedding_json)
         """)
+        conn.execute(
+            stmt,
+            [
+                {"chunk_id": cid, "embedding_json": vec_to_str(vec)}
+                for cid, vec in vectors
+            ],
+        )
 
-        from sqlalchemy.engine import Connection, Engine
-
-        def _do(conn):
-            conn.execute(
-                stmt,
-                [
-                    {"chunk_id": cid, "embedding_json": vec_to_str(vec)}
-                    for cid, vec in vectors
-                ],
-            )
-
-        if isinstance(engine_or_conn, Connection):
-            _do(engine_or_conn)
-        elif isinstance(engine_or_conn, Engine):
-            with engine_or_conn.begin() as conn:
-                _do(conn)
-        else:
-            _do(engine_or_conn)
-
-    def delete_vectors(self, engine: Engine, *, chunks: List[str]) -> None:
+    def delete_vectors(self, conn: Connection, *, chunks: List[str]) -> None:
         if not chunks:
             return
         stmt = text("""
             DELETE FROM chunk_vectors
             WHERE chunk_id IN :chunk_ids
         """).bindparams(bindparam("chunk_ids", expanding=True))
-        with engine.begin() as conn:
-            conn.execute(stmt, {"chunk_ids": chunks})
+        conn.execute(stmt, {"chunk_ids": chunks})

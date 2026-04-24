@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from typing import List, Tuple
-from sqlalchemy.engine import Engine
+from sqlalchemy.engine import Connection, Engine
 
 
 class VectorBackend(ABC):
@@ -23,24 +23,31 @@ class VectorBackend(ABC):
     @abstractmethod
     def upsert_vectors(
         self,
-        engine: Engine,
+        conn: Connection,
         *,
         vectors: List[Tuple[str, List[float]]],
         embedding_model_id: str,
         dim: int,
         normalized: bool,
     ) -> None:
-        """Insert/replace vectors keyed by chunk_id."""
+        """Insert/replace vectors keyed by chunk_id.
+
+        Receives the caller's active Connection so the operation participates
+        in the surrounding transaction.
+        """
 
     @abstractmethod
-    def delete_vectors(self, engine: Engine, *, chunks: List[str]) -> None:
-        """Delete vectors by chunk_id"""
+    def delete_vectors(self, conn: Connection, *, chunks: List[str]) -> None:
+        """Delete vectors by chunk_id.
+
+        Receives the caller's active Connection so the operation participates
+        in the surrounding transaction.
+        """
 
     @abstractmethod
     def search(
         self, engine: Engine, *, query_vector: list[float], top_k: int
     ) -> list[tuple[str, float]]:
-        """the main entry point for querying the database.
-        Return [(chunk_id, score)] where score is backend-native distance.
+        """Return [(chunk_id, score)] where score is backend-native distance.
         Lower is better.
         """

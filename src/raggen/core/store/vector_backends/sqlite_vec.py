@@ -95,7 +95,7 @@ class SQLiteVecBackend(VectorBackend):
 
     def upsert_vectors(
         self,
-        engine_or_conn,
+        conn: Connection,
         *,
         vectors: List[Tuple[str, List[float]]],
         embedding_model_id: str,  # not used by sqlite-vec table; metadata lives elsewhere
@@ -109,91 +109,72 @@ class SQLiteVecBackend(VectorBackend):
             if len(vec) != dim:
                 raise ValueError(f"Vector for {cid} has length {len(vec)} != {dim}")
 
-        def _do(conn: Connection) -> None:
-            self._ensure_vec_loaded(conn)
+        self._ensure_vec_loaded(conn)
 
-            # Mapping table: safe to use ON CONFLICT (this is a normal table)
-            insert_map = text("""
-                INSERT INTO chunk_vectors_map (chunk_id)
-                VALUES (:chunk_id)
-                ON CONFLICT(chunk_id) DO NOTHING
-            """)
+        # Mapping table: safe to use ON CONFLICT (this is a normal table)
+        insert_map = text("""
+            INSERT INTO chunk_vectors_map (chunk_id)
+            VALUES (:chunk_id)
+            ON CONFLICT(chunk_id) DO NOTHING
+        """)
 
-            select_id = text("""
-                SELECT id
-                FROM chunk_vectors_map
-                WHERE chunk_id = :chunk_id
-            """)
+        select_id = text("""
+            SELECT id
+            FROM chunk_vectors_map
+            WHERE chunk_id = :chunk_id
+        """)
 
-            # Virtual table: must do manual "upsert"
-            update_vec = text("""
-                UPDATE chunk_vectors
-                SET embedding = :embedding
-                WHERE rowid = :rowid
-            """)
+        # Virtual table: must do manual "upsert"
+        update_vec = text("""
+            UPDATE chunk_vectors
+            SET embedding = :embedding
+            WHERE rowid = :rowid
+        """)
 
-            insert_vec = text("""
-                INSERT INTO chunk_vectors(rowid, embedding)
-                VALUES (:rowid, :embedding)
-            """)
+        insert_vec = text("""
+            INSERT INTO chunk_vectors(rowid, embedding)
+            VALUES (:rowid, :embedding)
+        """)
 
-            for chunk_id, vec in vectors:
-                # Ensure mapping exists
-                conn.execute(insert_map, {"chunk_id": chunk_id})
-                rowid = conn.execute(select_id, {"chunk_id": chunk_id}).scalar_one()
-                params = {"rowid": int(rowid), "embedding": _serialize_f32(vec)}
+        for chunk_id, vec in vectors:
+            conn.execute(insert_map, {"chunk_id": chunk_id})
+            rowid = conn.execute(select_id, {"chunk_id": chunk_id}).scalar_one()
+            params = {"rowid": int(rowid), "embedding": _serialize_f32(vec)}
 
-                # Try update first
-                res = conn.execute(update_vec, params)
-
-                # If no row was updated, insert
-                # SQLAlchemy CursorResult.rowcount is supported here for sqlite
-                if res.rowcount == 0:
-                    conn.execute(insert_vec, params)
-
-        if isinstance(engine_or_conn, Connection):
-            _do(engine_or_conn)
-        elif isinstance(engine_or_conn, Engine):
-            with engine_or_conn.begin() as conn:
-                _do(conn)
-        else:
-            # fallback: assume it behaves like a Connection
-            _do(engine_or_conn)
+            res = conn.execute(update_vec, params)
+            if res.rowcount == 0:
+                conn.execute(insert_vec, params)
 
     # ---- delete ----
 
     def delete_vectors(
         self,
-        engine,
+        conn: Connection,
         *,
         chunks: List[str],
     ) -> None:
         if not chunks:
             return
 
-        with engine.begin() as conn:
-            self._ensure_vec_loaded(conn)
+        self._ensure_vec_loaded(conn)
 
-            # Get rowids for chunk_ids
-            ids_stmt = text("""
-                SELECT id
-                FROM chunk_vectors_map
-                WHERE chunk_id IN :chunk_ids
-                """).bindparams(bindparam("chunk_ids", expanding=True))
+        ids_stmt = text("""
+            SELECT id
+            FROM chunk_vectors_map
+            WHERE chunk_id IN :chunk_ids
+            """).bindparams(bindparam("chunk_ids", expanding=True))
 
-            rowids = list(conn.scalars(ids_stmt, {"chunk_ids": chunks}))
-            if rowids:
-                # Delete from vec table by rowid
-                del_vec = text(
-                    "DELETE FROM chunk_vectors WHERE rowid IN :rowids"
-                ).bindparams(bindparam("rowids", expanding=True))
-                conn.execute(del_vec, {"rowids": rowids})
+        rowids = list(conn.scalars(ids_stmt, {"chunk_ids": chunks}))
+        if rowids:
+            del_vec = text(
+                "DELETE FROM chunk_vectors WHERE rowid IN :rowids"
+            ).bindparams(bindparam("rowids", expanding=True))
+            conn.execute(del_vec, {"rowids": rowids})
 
-            # Delete mapping rows
-            del_map = text(
-                "DELETE FROM chunk_vectors_map WHERE chunk_id IN :chunk_ids"
-            ).bindparams(bindparam("chunk_ids", expanding=True))
-            conn.execute(del_map, {"chunk_ids": chunks})
+        del_map = text(
+            "DELETE FROM chunk_vectors_map WHERE chunk_id IN :chunk_ids"
+        ).bindparams(bindparam("chunk_ids", expanding=True))
+        conn.execute(del_map, {"chunk_ids": chunks})
 
     def search(
         self,
