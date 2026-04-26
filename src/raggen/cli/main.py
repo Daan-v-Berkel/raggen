@@ -2,13 +2,6 @@ from __future__ import annotations
 
 import argparse
 
-from raggen.cli.commands import (
-    init as init_cmd,
-    ingest as ingest_cmd,
-    query as query_cmd,
-    runs as runs_cmd,
-    build as build_cmd
-)
 from raggen.core.results.formats import OutputFormat
 
 
@@ -167,7 +160,6 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         help="Filter by operation, e.g. ingest or query.",
     )
-    runs_list_p.set_defaults(func=runs_cmd.run_list)
 
     runs_show_p = runs_sub.add_parser(
         "show",
@@ -196,7 +188,6 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         help="Filter latest lookup by operation, e.g. ingest or query.",
     )
-    runs_show_p.set_defaults(func=runs_cmd.run_show)
 
     return parser
 
@@ -206,6 +197,7 @@ def main(argv=None):
     args = parser.parse_args(argv)
 
     if args.command == "init":
+        from raggen.cli.commands import init as init_cmd
         return init_cmd.run_init(
             root=args.root,
             force=args.force,
@@ -214,6 +206,7 @@ def main(argv=None):
         )
 
     if args.command == "build":
+        from raggen.cli.commands import build as build_cmd
         return build_cmd.run_build(
             config=args.config,
             destructive=args.destructive,
@@ -222,6 +215,7 @@ def main(argv=None):
         )
 
     if args.command == "ingest":
+        from raggen.cli.commands import ingest as ingest_cmd
         return ingest_cmd.run_ingest(
             config_path=args.config,
             destructive=args.destructive,
@@ -230,6 +224,7 @@ def main(argv=None):
         )
 
     if args.command == "query":
+        from raggen.cli.commands import query as query_cmd
         return query_cmd.run_query(
             args.text,
             config_path=args.config,
@@ -239,6 +234,7 @@ def main(argv=None):
         )
 
     if args.command == "runs":
+        from raggen.cli.commands import runs as runs_cmd
         if args.runs_command == "list":
             return runs_cmd.run_list(config_path=args.config,
                                      limit=args.limit, operation=args.operation,
