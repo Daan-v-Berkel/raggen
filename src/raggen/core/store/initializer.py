@@ -35,10 +35,6 @@ def _compare_configs(stored: dict, cfg: ProjectConfig) -> dict:
         stored_val = getattr(stored, stored_k, "")
         cfg_val = _get_attr_path(cfg, cfg_path)
 
-        # normalize bool to match DB integer storage
-        if isinstance(cfg_val, bool):
-            cfg_val = 1 if cfg_val else 0
-
         if stored_val != cfg_val:
             diffs[stored_k] = {
                 "stored": stored_val,
