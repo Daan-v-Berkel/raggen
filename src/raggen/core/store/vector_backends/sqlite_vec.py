@@ -33,8 +33,8 @@ class SQLiteVecBackend(VectorBackend):
             import sqlite_vec  # type: ignore
         except Exception as e:
             raise RuntimeError(
-                "sqlite-vec backend selected but python package 'sqlite-vec' is not installed. "
-                "Install it (e.g. `pip install sqlite-vec`) or choose a different backend."
+                "sqlite-vec backend selected but the 'sqlite-vec' package is not installed. "
+                "Install it with: pip install sqlite-vec"
             ) from e
 
         # Load extension into this raw connection

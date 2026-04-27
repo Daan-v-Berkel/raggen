@@ -10,7 +10,8 @@ import json
 @dataclass
 class ScanConfig(TOMLDataclass):
     ignore_files: List[str] = field(default_factory=lambda: [".gitignore"])
-    ignore: List[str] = field(default_factory=lambda: [".venv/", "node_modules/"])
+    ignore: List[str] = field(default_factory=lambda: [
+                              ".venv/", "node_modules/"])
     max_encoding_error_ratio: float = 0.05
 
 
@@ -57,10 +58,9 @@ class EmbeddingConfig(TOMLDataclass):
 class StorageConfig(TOMLDataclass):
     backend_key: str = "sqlite_vec"
     database_url: str = "sqlite:///./.rag/rag.db"
-    vector_backend_import: str = (
-        "raggen.core.store.vector_backends.sqlite_vec:SQLiteVecBackend"
-    )
-    destructive_default: bool = False
+    # Leave empty to use the built-in backend for backend_key.
+    # Set to a 'module:ClassName' import path for a custom backend plugin.
+    vector_backend_import: str = ""
 
 
 @dataclass
@@ -91,7 +91,8 @@ class ProjectConfig(ConfigDataclass, TOMLDataclass):
     file_groups: dict[str, FileGroupConfig] = field(
         default_factory=_default_file_groups
     )
-    chunking: dict[str, GroupChunkingConfig] = field(default_factory=_default_chunking)
+    chunking: dict[str, GroupChunkingConfig] = field(
+        default_factory=_default_chunking)
     fallback_group: str = "fallback"
     embedding: EmbeddingConfig = field(default_factory=EmbeddingConfig)
     storage: StorageConfig = field(default_factory=StorageConfig)

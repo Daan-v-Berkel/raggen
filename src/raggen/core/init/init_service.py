@@ -9,6 +9,7 @@ from raggen.core.results.envelope import ResultEnvelope, ResultMessage
 from raggen.core.metadata.store import create_project_state, save_project_state
 from raggen.core.metadata.models import ProjectLifecycleState
 from raggen.core.results.envelope import init_result
+from raggen.core.store.plugin_loader import resolve_vector_backend_import
 
 
 def do_init(
@@ -68,7 +69,9 @@ def do_init(
             "project_state_path": str(state_path),
             "storage_backend_key": cfg.storage.backend_key,
             "database_url": cfg.storage.database_url,
-            "vector_backend_import": cfg.storage.vector_backend_import,
+            "vector_backend_import": resolve_vector_backend_import(
+                cfg.storage.backend_key, cfg.storage.vector_backend_import
+            ),
             "embedding_model": cfg.embedding.model_id,
             "embedding_dim": cfg.embedding.dim,
             "ignore_files": list(cfg.scan.ignore_files),

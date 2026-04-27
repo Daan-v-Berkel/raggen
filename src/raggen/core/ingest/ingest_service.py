@@ -15,7 +15,7 @@ from raggen.core.embeddings.embedder import (
     LocalSentenceTransformerEmbedder,
     embed_chunks,
 )
-from raggen.core.store import store_document_bundle, delete_documents, load_vector_backend
+from raggen.core.store import store_document_bundle, delete_documents, load_vector_backend, resolve_vector_backend_import
 from raggen.core.store.metadata_store import fetch_all_document_ids
 from raggen.core.scanner import scan_files
 from raggen.core.runtime import get_engine
@@ -29,7 +29,9 @@ from raggen.core.runs.decorators import persist_result
 def do_ingest(destructive: bool = False) -> ResultEnvelope:
     cfg = ProjectConfig.get_config()
     engine = get_engine()
-    backend = load_vector_backend(cfg.storage.vector_backend_import)
+    backend = load_vector_backend(
+        resolve_vector_backend_import(cfg.storage.backend_key, cfg.storage.vector_backend_import)
+    )
 
     ingest_result = init_result("ingest")
 

@@ -4,9 +4,10 @@ from sqlalchemy import select
 from sqlalchemy.engine import Engine
 
 from raggen.core.config.project import ProjectConfig
-from .metadata_schema import metadata, rag_project
+from .metadata_schema import rag_project
+from .metadata_backends.sqlalchemy import SqlalchemyMetadataBackend
 from .exceptions import SchemaMismatchError, BackendLoadError, BackendNotSupportedError
-from .plugin_loader import load_vector_backend
+from .plugin_loader import load_vector_backend, resolve_vector_backend_import
 from raggen.core.runtime import get_engine
 import json
 
@@ -34,10 +35,6 @@ def _compare_configs(stored: dict, cfg: ProjectConfig) -> dict:
         stored_val = getattr(stored, stored_k, "")
         cfg_val = _get_attr_path(cfg, cfg_path)
 
-        # normalize bool to match DB integer storage
-        if isinstance(cfg_val, bool):
-            cfg_val = 1 if cfg_val else 0
-
         if stored_val != cfg_val:
             diffs[stored_k] = {
                 "stored": stored_val,
@@ -49,13 +46,13 @@ def _compare_configs(stored: dict, cfg: ProjectConfig) -> dict:
 
 def validate_existing_project(engine: Engine, cfg: ProjectConfig) -> None:
     conn = engine.connect()
-    sel = select(rag_project).where(rag_project.c.id == 1)
-    try:
-        res = conn.execute(sel).mappings().fetchone()
-    except Exception:
-        # Table may not exist yet; treat as no stored project
-        res = None
-    conn.close()
+    with engine.connect() as conn:
+        sel = select(rag_project).where(rag_project.c.id == 1)
+        try:
+            res = conn.execute(sel).mappings().fetchone()
+        except Exception:
+            # Table may not exist yet; treat as no stored project
+            res = None
     if not res:
         return
     diffs = _compare_configs(res, cfg)
@@ -91,48 +88,44 @@ def _insert_project_row(engine, cfg: ProjectConfig, import_path: str) -> None:
 def init_database(cfg: ProjectConfig, *, destructive: bool = False) -> Engine:
     engine = get_engine()
 
-    import_path = cfg.storage.vector_backend_import
-    if not import_path:
-        raise BackendLoadError(
-            "No vector_backend_import provided"
-        )
+    vector_import = resolve_vector_backend_import(
+        cfg.storage.backend_key, cfg.storage.vector_backend_import
+    )
 
     try:
-        backend = load_vector_backend(import_path)
+        vector_backend = load_vector_backend(vector_import)
+    except BackendLoadError:
+        raise
     except Exception as exc:
         raise BackendLoadError(
-            f"Failed to load vector backend '{import_path}': {exc}"
+            f"Failed to load vector backend '{vector_import}': {exc}"
         ) from exc
 
-    if not backend.supports(engine):
+    if not vector_backend.supports(engine):
         raise BackendNotSupportedError(
-            f"Backend '{backend.key}' does not support engine dialect '{
+            f"Backend '{vector_backend.key}' does not support engine dialect '{
                 engine.dialect.name}'"
         )
 
+    meta_backend = SqlalchemyMetadataBackend()
     existing = _fetch_project_row(engine)
 
     if destructive:
         try:
-            backend.drop_schema(engine)
+            vector_backend.drop_schema(engine)
         except Exception:
             pass
-        metadata.drop_all(engine)
-        metadata.create_all(engine)
-        backend.create_schema(engine, cfg.embedding.dim)
-        _insert_project_row(engine, cfg, import_path)
+        meta_backend.drop_schema(engine)
+        meta_backend.create_schema(engine)
+        vector_backend.create_schema(engine, cfg.embedding.dim)
+        _insert_project_row(engine, cfg, vector_import)
 
     else:
         if existing is not None:
             validate_existing_project(engine, cfg)
         else:
-            metadata.create_all(engine)
-            backend.create_schema(engine, cfg.embedding.dim)
-            _insert_project_row(engine, cfg, import_path)
-
-    try:
-        setattr(engine, "_rag_vector_backend", backend)
-    except Exception:
-        pass
+            meta_backend.create_schema(engine)
+            vector_backend.create_schema(engine, cfg.embedding.dim)
+            _insert_project_row(engine, cfg, vector_import)
 
     return engine

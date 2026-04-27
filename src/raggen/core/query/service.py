@@ -6,7 +6,7 @@ from raggen.core.store.metadata_store import MetadataStore
 from raggen.core.runtime import get_engine
 from raggen.core.config.project import ProjectConfig
 from raggen.core.embeddings.embedder import LocalSentenceTransformerEmbedder
-from raggen.core.store.plugin_loader import load_vector_backend
+from raggen.core.store.plugin_loader import load_vector_backend, resolve_vector_backend_import
 from raggen.core.results.envelope import ResultEnvelope, ResultMessage, init_result
 from raggen.core.runs.store import get_run_store
 from raggen.core.runs.decorators import persist_result
@@ -30,7 +30,9 @@ def query(request: QueryRequest) -> ResultEnvelope:
     cfg = ProjectConfig.get_config()
     engine = get_engine()
 
-    vector_backend = load_vector_backend(cfg.storage.vector_backend_import)
+    vector_backend = load_vector_backend(
+        resolve_vector_backend_import(cfg.storage.backend_key, cfg.storage.vector_backend_import)
+    )
 
     query_result = init_result("query")
 
