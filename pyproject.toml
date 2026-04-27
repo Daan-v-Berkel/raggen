@@ -50,6 +50,7 @@ dev = [
 "flake8-pyproject",
 ]
 xml = ["pydantic-xml>=2.14,<3"]
+postgres = ["psycopg2-binary>=2.9"]
 
 [project.urls]
 Homepage = "https://github.com/Daan-v-Berkel/raggen"

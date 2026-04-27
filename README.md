@@ -54,6 +54,11 @@ raggen ships with two vector backends out of the box:
 - pgvector    PostgreSQL with the pgvector extension.
               Good for shared or production deployments.
 
+sqlite_vec works out of the box — no extra dependencies needed. For pgvector,
+install the PostgreSQL driver first:
+
+  pip install raggen[postgres]
+
 Select a backend in .rag/config.toml:
 
   [storage]
