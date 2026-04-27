@@ -9,6 +9,7 @@ from raggen.core.metadata.models import (
     FoundationalConfigSnapshot,
     ProjectState,
 )
+from raggen.core.store.plugin_loader import resolve_vector_backend_import
 
 
 def metadata_dir(project_root: str | Path) -> Path:
@@ -27,7 +28,9 @@ def snapshot_foundational_config(cfg: ProjectConfig) -> FoundationalConfigSnapsh
         embedding_dim=cfg.embedding.dim,
         storage_backend_key=cfg.storage.backend_key,
         database_url=cfg.storage.database_url,
-        vector_backend_import=cfg.storage.vector_backend_import,
+        vector_backend_import=resolve_vector_backend_import(
+            cfg.storage.backend_key, cfg.storage.vector_backend_import
+        ),
     )
 
 

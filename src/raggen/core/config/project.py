@@ -57,9 +57,9 @@ class EmbeddingConfig(TOMLDataclass):
 class StorageConfig(TOMLDataclass):
     backend_key: str = "sqlite_vec"
     database_url: str = "sqlite:///./.rag/rag.db"
-    vector_backend_import: str = (
-        "raggen.core.store.vector_backends.sqlite_vec:SQLiteVecBackend"
-    )
+    # Leave empty to use the built-in backend for backend_key.
+    # Set to a 'module:ClassName' import path for a custom backend plugin.
+    vector_backend_import: str = ""
     destructive_default: bool = False
 
 

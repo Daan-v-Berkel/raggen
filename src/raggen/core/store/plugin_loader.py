@@ -7,6 +7,31 @@ from typing import Any
 from .exceptions import BackendLoadError
 from .vector_backends.base import VectorBackend
 
+BUILTIN_VECTOR_BACKENDS: dict[str, str] = {
+    "sqlite_vec": "raggen.core.store.vector_backends.sqlite_vec:SQLiteVecBackend",
+    "pgvector": "raggen.core.store.vector_backends.pgvector:PgVectorBackend",
+}
+
+
+def resolve_vector_backend_import(backend_key: str, override: str = "") -> str:
+    """Return the import path for a vector backend.
+
+    If *override* is non-empty it is used as-is (custom plugin path).
+    Otherwise *backend_key* is looked up in BUILTIN_VECTOR_BACKENDS.
+    Raises BackendLoadError when neither resolves to a known path.
+    """
+    if override:
+        return override
+    path = BUILTIN_VECTOR_BACKENDS.get(backend_key)
+    if path is None:
+        known = ", ".join(sorted(BUILTIN_VECTOR_BACKENDS))
+        raise BackendLoadError(
+            f"Unknown backend_key '{backend_key}'. "
+            f"Built-in backends: {known}. "
+            f"Set vector_backend_import in [storage] to use a custom backend."
+        )
+    return path
+
 
 def load_object(import_path: str) -> Any:
     """Load an object given an import path in form 'module.sub:AttrName'."""

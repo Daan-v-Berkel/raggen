@@ -6,7 +6,7 @@ from sqlalchemy.engine import Engine
 from raggen.core.config.project import ProjectConfig
 from .metadata_schema import metadata, rag_project
 from .exceptions import SchemaMismatchError, BackendLoadError, BackendNotSupportedError
-from .plugin_loader import load_vector_backend
+from .plugin_loader import load_vector_backend, resolve_vector_backend_import
 from raggen.core.runtime import get_engine
 import json
 
@@ -91,11 +91,12 @@ def _insert_project_row(engine, cfg: ProjectConfig, import_path: str) -> None:
 def init_database(cfg: ProjectConfig, *, destructive: bool = False) -> Engine:
     engine = get_engine()
 
-    import_path = cfg.storage.vector_backend_import
-    if not import_path:
-        raise BackendLoadError(
-            "No vector_backend_import provided"
+    try:
+        import_path = resolve_vector_backend_import(
+            cfg.storage.backend_key, cfg.storage.vector_backend_import
         )
+    except BackendLoadError:
+        raise
 
     try:
         backend = load_vector_backend(import_path)
