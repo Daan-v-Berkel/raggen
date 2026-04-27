@@ -50,13 +50,13 @@ def _compare_configs(stored: dict, cfg: ProjectConfig) -> dict:
 
 def validate_existing_project(engine: Engine, cfg: ProjectConfig) -> None:
     conn = engine.connect()
-    sel = select(rag_project).where(rag_project.c.id == 1)
-    try:
-        res = conn.execute(sel).mappings().fetchone()
-    except Exception:
-        # Table may not exist yet; treat as no stored project
-        res = None
-    conn.close()
+    with engine.connect() as conn:
+        sel = select(rag_project).where(rag_project.c.id == 1)
+        try:
+            res = conn.execute(sel).mappings().fetchone()
+        except Exception:
+            # Table may not exist yet; treat as no stored project
+            res = None
     if not res:
         return
     diffs = _compare_configs(res, cfg)
@@ -107,7 +107,8 @@ def init_database(cfg: ProjectConfig, *, destructive: bool = False) -> Engine:
 
     if not vector_backend.supports(engine):
         raise BackendNotSupportedError(
-            f"Backend '{vector_backend.key}' does not support engine dialect '{engine.dialect.name}'"
+            f"Backend '{vector_backend.key}' does not support engine dialect '{
+                engine.dialect.name}'"
         )
 
     meta_backend = SqlalchemyMetadataBackend()
@@ -130,10 +131,5 @@ def init_database(cfg: ProjectConfig, *, destructive: bool = False) -> Engine:
             meta_backend.create_schema(engine)
             vector_backend.create_schema(engine, cfg.embedding.dim)
             _insert_project_row(engine, cfg, vector_import)
-
-    try:
-        setattr(engine, "_rag_vector_backend", vector_backend)
-    except Exception:
-        pass
 
     return engine

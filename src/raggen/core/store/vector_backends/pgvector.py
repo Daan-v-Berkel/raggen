@@ -22,10 +22,7 @@ class PgVectorBackend(VectorBackend):
             conn.execute(text(f"""
                 CREATE TABLE IF NOT EXISTS chunk_vectors (
                     chunk_id TEXT PRIMARY KEY,
-                    embedding vector({dim}) NOT NULL,
-                    embedding_model_id TEXT NOT NULL,
-                    normalized BOOLEAN NOT NULL,
-                    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+                    embedding vector({dim}) NOT NULL
                 )
             """))
 
@@ -47,20 +44,16 @@ class PgVectorBackend(VectorBackend):
                 raise ValueError(f"Vector for {cid} has length {len(vec)} != {dim}")
 
         stmt = text("""
-            INSERT INTO chunk_vectors (chunk_id, embedding, embedding_model_id, normalized)
-            VALUES (:chunk_id, CAST(:vec AS vector), :model, :norm)
+            INSERT INTO chunk_vectors (chunk_id, embedding)
+            VALUES (:chunk_id, CAST(:vec AS vector))
             ON CONFLICT (chunk_id) DO UPDATE
-                SET embedding = EXCLUDED.embedding,
-                    embedding_model_id = EXCLUDED.embedding_model_id,
-                    normalized = EXCLUDED.normalized
+                SET embedding = EXCLUDED.embedding
         """)
 
         for cid, vec in vectors:
             conn.execute(stmt, {
                 "chunk_id": cid,
                 "vec": _pgvector_literal(vec),
-                "model": embedding_model_id,
-                "norm": normalized,
             })
 
     def delete_vectors(

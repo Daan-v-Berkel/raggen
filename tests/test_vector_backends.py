@@ -29,10 +29,7 @@ def test_initializer_calls_backend_create_schema(
     cfg_path = write_cfg(cfg, tmp_path)
     cfg = bootstrap(cfg_path)
 
-    engine = init_database(cfg)
-
-    backend = getattr(engine, "_rag_vector_backend", None)
-    assert backend is not None
+    init_database(cfg)
 
     # verify schema creation was invoked with the configured dim
     assert backend_cls.created_calls == [42]
@@ -56,17 +53,13 @@ def test_destructive_reinit_calls_drop_schema(
     cfg_path = write_cfg(cfg, tmp_path)
     cfg = bootstrap(cfg_path)
 
-    engine = init_database(cfg)
-    backend = getattr(engine, "_rag_vector_backend", None)
-    assert backend is not None
+    init_database(cfg)
 
     # initial init should create schema once
     assert backend_cls.created_calls == [16]
     assert backend_cls.dropped_calls == []
 
-    engine = init_database(cfg, destructive=True)
-    backend = getattr(engine, "_rag_vector_backend", None)
-    assert backend is not None
+    init_database(cfg, destructive=True)
 
     # destructive reinit should drop, then recreate
     assert backend_cls.dropped_calls == [True]
