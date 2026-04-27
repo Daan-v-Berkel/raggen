@@ -72,3 +72,5 @@ __pycache__/
 .crush/
 .rag_cache/
 docs/
+todo.txt
+.claude/
