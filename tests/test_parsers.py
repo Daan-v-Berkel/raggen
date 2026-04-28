@@ -1,10 +1,11 @@
-"""Tests for the parser layer — MarkdownParser and PlainTextFallbackParser."""
+"""Tests for the parser layer."""
 from __future__ import annotations
 
 import pytest
 from raggen.core.parsing.parser import ParseInput, ParserRegistry
 from raggen.core.parsing.MarkdownParser import MarkdownParser
 from raggen.core.parsing.PlainTextParser import PlainTextFallbackParser
+from raggen.core.parsing.HtmlParser import HtmlParser
 
 
 # ---------------------------------------------------------------------------
@@ -179,3 +180,119 @@ class TestParserRegistry:
         doc = parser.parse(inp).document
         assert "# Introduction" in doc.text
         assert "## Installation" in doc.text
+
+    def test_html_mimetype_routes_to_html_parser(self):
+        registry = ParserRegistry(fallback_parser=PlainTextFallbackParser())
+        registry.register(HtmlParser())
+        assert isinstance(registry.resolve("text/html"), HtmlParser)
+
+    def test_xhtml_mimetype_routes_to_html_parser(self):
+        registry = ParserRegistry(fallback_parser=PlainTextFallbackParser())
+        registry.register(HtmlParser())
+        assert isinstance(registry.resolve("application/xhtml+xml"), HtmlParser)
+
+
+# ---------------------------------------------------------------------------
+# HtmlParser
+# ---------------------------------------------------------------------------
+
+def _html_inp(html: str, filename: str = "test.html") -> ParseInput:
+    return ParseInput(
+        doc_id="doc1",
+        data=html.encode("utf-8"),
+        mimetype="text/html",
+        filename=filename,
+    )
+
+
+class TestHtmlParser:
+    def setup_method(self):
+        self.parser = HtmlParser()
+
+    def test_parser_id(self):
+        assert self.parser.parser_id == "html:v1"
+
+    def test_supported_mimetypes(self):
+        assert "text/html" in self.parser.supported_mimetypes
+        assert "application/xhtml+xml" in self.parser.supported_mimetypes
+
+    def test_h1_becomes_heading_marker(self):
+        result = self.parser.parse(_html_inp("<h1>Title</h1><p>Body text.</p>"))
+        assert "# Title" in result.document.text
+
+    def test_h2_becomes_level_2_marker(self):
+        result = self.parser.parse(_html_inp("<h2>Section</h2><p>Text.</p>"))
+        assert "## Section" in result.document.text
+
+    def test_h3_becomes_level_3_marker(self):
+        result = self.parser.parse(_html_inp("<h3>Sub</h3><p>Text.</p>"))
+        assert "### Sub" in result.document.text
+
+    def test_h4_clamped_to_level_3(self):
+        result = self.parser.parse(_html_inp("<h4>Deep</h4><p>Text.</p>"))
+        assert "### Deep" in result.document.text
+        assert "#### Deep" not in result.document.text
+
+    def test_paragraph_text_included(self):
+        result = self.parser.parse(_html_inp("<p>Hello world.</p>"))
+        assert "Hello world." in result.document.text
+
+    def test_script_tag_skipped(self):
+        result = self.parser.parse(_html_inp(
+            "<p>Visible.</p><script>alert('xss')</script>"
+        ))
+        assert "alert" not in result.document.text
+        assert "Visible." in result.document.text
+
+    def test_style_tag_skipped(self):
+        result = self.parser.parse(_html_inp(
+            "<style>body { color: red; }</style><p>Content.</p>"
+        ))
+        assert "color" not in result.document.text
+        assert "Content." in result.document.text
+
+    def test_pre_block_becomes_fenced_code(self):
+        result = self.parser.parse(_html_inp(
+            "<pre>def foo():\n    pass</pre>"
+        ))
+        assert "```" in result.document.text
+        assert "def foo():" in result.document.text
+
+    def test_nested_tags_text_preserved(self):
+        result = self.parser.parse(_html_inp(
+            "<p><strong>Bold</strong> and <em>italic</em> text.</p>"
+        ))
+        assert "Bold" in result.document.text
+        assert "italic" in result.document.text
+
+    def test_html_entities_decoded(self):
+        result = self.parser.parse(_html_inp("<p>AT&amp;T &lt;rocks&gt;</p>"))
+        assert "AT&T" in result.document.text
+        assert "<rocks>" in result.document.text
+
+    def test_full_page_heading_structure(self):
+        html = """
+        <html><body>
+          <h1>Guide</h1>
+          <p>Intro paragraph.</p>
+          <h2>Installation</h2>
+          <p>Run pip install.</p>
+          <h3>Requirements</h3>
+          <p>Python 3.10+</p>
+        </body></html>
+        """
+        result = self.parser.parse(_html_inp(html))
+        text = result.document.text
+        assert "# Guide" in text
+        assert "## Installation" in text
+        assert "### Requirements" in text
+        assert "Intro paragraph." in text
+
+    def test_empty_data_raises(self):
+        inp = ParseInput(doc_id="x", data=b"", mimetype="text/html", filename="e.html")
+        with pytest.raises(ValueError, match="empty"):
+            self.parser.parse(inp)
+
+    def test_effective_mimetype(self):
+        result = self.parser.parse(_html_inp("<p>hi</p>"))
+        assert result.effective_mimetype == "text/html"
