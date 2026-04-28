@@ -15,6 +15,10 @@ from langchain_text_splitters import (
     MarkdownHeaderTextSplitter,
 )
 
+# Type aliases for readability
+_LengthFn = Callable[[str], int]
+_StrategyFn = Callable[[Document, GroupChunkingConfig, _LengthFn], list[ChunkDraft]]
+
 
 class ChunkingError(RuntimeError):
     pass
@@ -36,19 +40,25 @@ class BaseChunker(ABC):
 class StrategyChunker(BaseChunker):
     """
     Generic chunker that delegates to a specific strategy function.
+
+    ``length_function`` controls how chunk sizes are measured:
+    - ``len`` (default) — character count, matches ``unit = "chars"``
+    - a tokenizer-based callable — token count, matches ``unit = "tokens"``
     """
 
     def __init__(
         self,
         config: GroupChunkingConfig,
-        strategy_fn: Callable[[Document, GroupChunkingConfig], list[ChunkDraft]],
+        strategy_fn: _StrategyFn,
+        length_function: _LengthFn = len,
     ):
         super().__init__(config)
         self._strategy_fn = strategy_fn
+        self._length_function = length_function
 
     def chunk(self, doc: Document) -> list[Chunk]:
         _validate_document(doc)
-        pieces = self._strategy_fn(doc, self.config)
+        pieces = self._strategy_fn(doc, self.config, self._length_function)
         return _enrich_chunks(doc, self.config, pieces)
 
 
@@ -59,6 +69,10 @@ class ChunkerRegistry:
 
         chunker = registry.get("code")
         chunks = chunker.chunk(parsed_doc)
+
+    Pass ``length_function`` when ``unit = "tokens"`` is configured for a
+    group — typically obtained from the embedder via
+    ``embedder.get_length_function()``.
     """
 
     def __init__(self):
@@ -66,7 +80,7 @@ class ChunkerRegistry:
         self.group_configs = cfg.chunking
         self.fallback_group = cfg.fallback_group
 
-    def get(self, group: str) -> BaseChunker:
+    def get(self, group: str, length_function: _LengthFn = len) -> BaseChunker:
         """
         Return a chunker for the given group.
         Unknown groups resolve to the configured fallback group.
@@ -78,14 +92,14 @@ class ChunkerRegistry:
                 f"Available groups: {available}"
             )
         chunk_config = self.group_configs[group]
-        return self._build_chunker(chunk_config)
+        return self._build_chunker(chunk_config, length_function)
 
-    def _build_chunker(self, conf: GroupChunkingConfig) -> BaseChunker:
+    def _build_chunker(
+        self, conf: GroupChunkingConfig, length_function: _LengthFn = len
+    ) -> BaseChunker:
         strategy = getattr(conf, "strategy", "fixed")
 
-        strategy_map: dict[
-            str, Callable[[Document, GroupChunkingConfig], list[ChunkDraft]]
-        ] = {
+        strategy_map: dict[str, _StrategyFn] = {
             "fixed": _chunk_fixed,
             "headingAware": _chunk_heading,
             "paragraphMerge": _chunk_paragraph,
@@ -98,7 +112,7 @@ class ChunkerRegistry:
                 f"Available strategies: {', '.join(sorted(strategy_map))}"
             )
 
-        return StrategyChunker(conf, strategy_map[strategy])
+        return StrategyChunker(conf, strategy_map[strategy], length_function)
 
 
 def _validate_document(doc: Document) -> None:
@@ -165,20 +179,26 @@ def _enrich_chunks(
 # ---------------------------------------------------------------------------
 
 
-def _chunk_fixed(doc: Document, conf: GroupChunkingConfig) -> list[ChunkDraft]:
+def _chunk_fixed(
+    doc: Document, conf: GroupChunkingConfig, length_fn: _LengthFn = len
+) -> list[ChunkDraft]:
     splitter = RecursiveCharacterTextSplitter(
         chunk_size=conf.chunk_size,
         chunk_overlap=conf.overlap,
+        length_function=length_fn,
     )
     return [ChunkDraft(text=t) for t in splitter.split_text(getattr(doc, "text", ""))]
 
 
-def _chunk_paragraph(doc: Document, conf: GroupChunkingConfig) -> list[ChunkDraft]:
+def _chunk_paragraph(
+    doc: Document, conf: GroupChunkingConfig, length_fn: _LengthFn = len
+) -> list[ChunkDraft]:
     splitter = RecursiveCharacterTextSplitter(
         separators=["\n\n"],
         keep_separator=False,
         chunk_size=conf.chunk_size,
         chunk_overlap=conf.overlap,
+        length_function=length_fn,
     )
     return [ChunkDraft(text=t) for t in splitter.split_text(getattr(doc, "text", ""))]
 
@@ -190,7 +210,9 @@ _HEADING_LEVELS = [
 ]
 
 
-def _chunk_heading(doc: Document, conf: GroupChunkingConfig) -> list[ChunkDraft]:
+def _chunk_heading(
+    doc: Document, conf: GroupChunkingConfig, length_fn: _LengthFn = len
+) -> list[ChunkDraft]:
     """Split on Markdown headings, then sub-split oversized sections.
 
     Each top-level section produced by MarkdownHeaderTextSplitter becomes
@@ -201,6 +223,9 @@ def _chunk_heading(doc: Document, conf: GroupChunkingConfig) -> list[ChunkDraft]
     Non-markdown documents (no headings) are handled transparently: the
     splitter returns the whole text as a single section with empty metadata,
     which then goes through the same sub-splitting path as any other section.
+
+    ``length_fn`` is used for both the size check and the sub-splitter so that
+    ``unit = "tokens"`` is respected end-to-end.
     """
     text = getattr(doc, "text", "") or ""
 
@@ -211,6 +236,7 @@ def _chunk_heading(doc: Document, conf: GroupChunkingConfig) -> list[ChunkDraft]
     sub_splitter = RecursiveCharacterTextSplitter(
         chunk_size=conf.chunk_size,
         chunk_overlap=conf.overlap,
+        length_function=length_fn,
     )
 
     sections = md_splitter.split_text(text)
@@ -226,8 +252,8 @@ def _chunk_heading(doc: Document, conf: GroupChunkingConfig) -> list[ChunkDraft]
         heading = section_path[-1] if section_path else None
         section_text = section.page_content
 
-        # Sub-split sections that exceed chunk_size
-        if len(section_text) <= conf.chunk_size:
+        # Sub-split sections that exceed chunk_size (measured by length_fn)
+        if length_fn(section_text) <= conf.chunk_size:
             pieces = [section_text]
         else:
             pieces = sub_splitter.split_text(section_text)
@@ -317,7 +343,9 @@ def _detect_language(doc: Document) -> Optional[Language]:
     return _EXT_TO_LANGUAGE.get(Path(rel_path).suffix.lower())
 
 
-def _chunk_code(doc: Document, conf: GroupChunkingConfig) -> list[ChunkDraft]:
+def _chunk_code(
+    doc: Document, conf: GroupChunkingConfig, length_fn: _LengthFn = len
+) -> list[ChunkDraft]:
     """Split code files using language-aware separators.
 
     Uses ``RecursiveCharacterTextSplitter.from_language()`` which prioritises
@@ -336,11 +364,13 @@ def _chunk_code(doc: Document, conf: GroupChunkingConfig) -> list[ChunkDraft]:
             language=language,
             chunk_size=conf.chunk_size,
             chunk_overlap=conf.overlap,
+            length_function=length_fn,
         )
     else:
         splitter = RecursiveCharacterTextSplitter(
             chunk_size=conf.chunk_size,
             chunk_overlap=conf.overlap,
+            length_function=length_fn,
         )
 
     return [ChunkDraft(text=t) for t in splitter.split_text(text)]

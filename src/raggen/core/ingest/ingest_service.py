@@ -64,12 +64,17 @@ def do_ingest(destructive: bool = False) -> ResultEnvelope:
     )
 
     chunk_registry = ChunkerRegistry()
+    # Build the token length function once — cheap after the model is loaded.
+    # Used by any group configured with unit = "tokens".
+    _token_length_fn = embedder.get_length_function()
 
     for group, file_refs in scanned.groups.items():
         if not file_refs:
             continue
 
-        chunker = chunk_registry.get(group)
+        group_conf = cfg.chunking.get(group)
+        length_fn = _token_length_fn if (group_conf and group_conf.unit == "tokens") else len
+        chunker = chunk_registry.get(group, length_function=length_fn)
 
         for fr in file_refs:
             current_files.add(fr.relative_path)
