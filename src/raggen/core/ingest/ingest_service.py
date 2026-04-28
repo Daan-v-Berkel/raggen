@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 from raggen.core.config.project import ProjectConfig
+from raggen.core.config.project import ConfigError
 from raggen.core.ingest.logging import log_stage, log_error, logger
 from raggen.core.ingest.gating import (
     should_ingest_raw_bytes,
@@ -10,6 +11,8 @@ from raggen.core.ingest.gating import (
 )
 from raggen.core.parsing.parser import ParserRegistry, ParseInput, ParserService
 from raggen.core.parsing.PlainTextParser import PlainTextFallbackParser
+from raggen.core.parsing.MarkdownParser import MarkdownParser
+from raggen.core.parsing.HtmlParser import HtmlParser
 from raggen.core.chunking.chunker import ChunkerRegistry
 from raggen.core.embeddings.embedder import (
     LocalSentenceTransformerEmbedder,
@@ -21,6 +24,7 @@ from raggen.core.scanner import scan_files
 from raggen.core.runtime import get_engine
 from raggen.core.results.envelope import ResultEnvelope, ResultMessage, init_result
 from datetime import datetime
+import json
 from raggen.core.runs.store import get_run_store
 from raggen.core.runs.decorators import persist_result
 
@@ -37,6 +41,8 @@ def do_ingest(destructive: bool = False) -> ResultEnvelope:
 
     # total files scanned includes skipped empty files
     registry = ParserRegistry(fallback_parser=PlainTextFallbackParser())
+    registry.register(MarkdownParser())
+    registry.register(HtmlParser())
     parser_service = ParserService(registry)
     embedder = LocalSentenceTransformerEmbedder(
         cfg.embedding.model_id,
@@ -58,13 +64,57 @@ def do_ingest(destructive: bool = False) -> ResultEnvelope:
         ignore_patterns=cfg.scan.ignore,
     )
 
+    # ---------------------------------------------------------------------------
+    # Validate chunk sizes against the model's maximum sequence length.
+    #
+    # unit = "tokens": we know the exact token count — hard error if it exceeds
+    #   the model limit (minus 2 for the CLS/SEP special tokens the model always
+    #   adds internally).
+    #
+    # unit = "chars": we can't know exactly without tokenising real content, but
+    #   we can estimate using a conservative 3 chars/token floor.  Emit an
+    #   advisory warning — clearly labelled as an estimate — so the user can
+    #   tighten the config before committing to a long ingest.
+    # ---------------------------------------------------------------------------
+    _max_seq = embedder.max_seq_length
+    _usable_tokens = _max_seq - 2  # reserve CLS + SEP
+    _CHARS_PER_TOKEN_FLOOR = 3     # conservative estimate (code / CJK worst-case)
+
+    for group, group_conf in cfg.chunking.items():
+        if group_conf.unit == "tokens":
+            if group_conf.chunk_size > _usable_tokens:
+                raise ConfigError(
+                    f"Chunking group '{group}': chunk_size={group_conf.chunk_size} tokens "
+                    f"exceeds the model's usable capacity "
+                    f"({_max_seq} max − 2 special tokens = {_usable_tokens}). "
+                    f"Reduce chunk_size to {_usable_tokens} or below."
+                )
+        elif group_conf.unit == "chars":
+            estimated_max_tokens = group_conf.chunk_size // _CHARS_PER_TOKEN_FLOOR
+            if estimated_max_tokens > _usable_tokens:
+                m = (
+                    f"Chunking group '{group}': chunk_size={group_conf.chunk_size} chars "
+                    f"may produce chunks up to ~{estimated_max_tokens} tokens "
+                    f"(estimated at {_CHARS_PER_TOKEN_FLOOR} chars/token — actual varies by content). "
+                    f"The model supports {_usable_tokens} content tokens. "
+                    f"Chunks that exceed this will be silently truncated during embedding. "
+                    f"Consider reducing chunk_size or switching to unit='tokens'."
+                )
+                logger.warning(m)
+                ingest_result.warnings.append(ResultMessage(code="chunk_size_estimate_warning", message=m))
+
     chunk_registry = ChunkerRegistry()
+    # Build the token length function once — cheap after the model is loaded.
+    # Used by any group configured with unit = "tokens".
+    _token_length_fn = embedder.get_length_function()
 
     for group, file_refs in scanned.groups.items():
         if not file_refs:
             continue
 
-        chunker = chunk_registry.get(group)
+        group_conf = cfg.chunking.get(group)
+        length_fn = _token_length_fn if (group_conf and group_conf.unit == "tokens") else len
+        chunker = chunk_registry.get(group, length_function=length_fn)
 
         for fr in file_refs:
             current_files.add(fr.relative_path)
@@ -160,11 +210,10 @@ def do_ingest(destructive: bool = False) -> ResultEnvelope:
                             "doc_id": ch.doc_id,
                             "chunk_index": ch.chunk_index,
                             "text": ch.text,
-                            "start_offset": getattr(ch, "start_offset", 0) or 0,
-                            "end_offset": getattr(ch, "end_offset", len(ch.text))
-                            or len(ch.text),
-                            "page_number": getattr(ch, "page_number", None),
-                            "heading_path_json": getattr(ch, "heading_path_json", None),
+                            "start_offset": ch.start_char if ch.start_char is not None else 0,
+                            "end_offset": ch.end_char if ch.end_char is not None else len(ch.text),
+                            "page_number": ch.metadata.page_start,
+                            "heading_path_json": json.dumps(ch.metadata.section_path) if ch.metadata.section_path else None,
                             "chunk_config_hash": ch.config_hash,
                             "created_at": ts,
                         }
@@ -174,7 +223,7 @@ def do_ingest(destructive: bool = False) -> ResultEnvelope:
                             "chunk_id": ch.chunk_id,
                             "embedding_model_id": cfg.embedding.model_id,
                             "dim": cfg.embedding.dim,
-                            "normalized": 1 if cfg.embedding.normalize else 0,
+                            "normalized": cfg.embedding.normalize,
                             "created_at": ts,
                         }
                     )

@@ -17,6 +17,13 @@ def _dummy_embedder_factory(*args, **kwargs):
 
         def embed_texts(self, texts, batch_size=32, normalize=True):
             return np.zeros((len(texts), 4), dtype=np.float32)
+
+        def get_length_function(self):
+            return len
+
+        @property
+        def max_seq_length(self):
+            return 512
     return Dummy()
 
 

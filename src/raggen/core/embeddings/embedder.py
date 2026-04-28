@@ -74,6 +74,26 @@ class LocalSentenceTransformerEmbedder:
     def dim(self) -> int:
         return int(self._model.get_sentence_embedding_dimension())
 
+    @property
+    def max_seq_length(self) -> int:
+        """Maximum number of tokens the model can encode (including special tokens)."""
+        return int(self._model.max_seq_length)
+
+    def get_length_function(self):
+        """Return a callable (str) -> int that counts tokens using this model's tokenizer.
+
+        The tokenizer is already downloaded as part of the model — no extra
+        network calls or dependencies are needed.  Special tokens (CLS, SEP)
+        are excluded from the count so that ``chunk_size`` in the config maps
+        directly to content tokens, not the model's internal overhead.
+        """
+        tokenizer = self._model.tokenizer
+
+        def _count_tokens(text: str) -> int:
+            return len(tokenizer.encode(text, add_special_tokens=False))
+
+        return _count_tokens
+
     def embed_texts(
         self,
         texts: Sequence[str],

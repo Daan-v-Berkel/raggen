@@ -15,12 +15,32 @@ class ScanConfig(TOMLDataclass):
     max_encoding_error_ratio: float = 0.05
 
 
+class ConfigError(ValueError):
+    """Raised when a raggen configuration value is invalid."""
+
+
+VALID_UNITS = frozenset({"chars", "tokens"})
+VALID_STRATEGIES = frozenset({"fixed", "headingAware", "paragraphMerge", "codeAware"})
+
+
 @dataclass
 class GroupChunkingConfig(TOMLDataclass):
     strategy: str = "fixed"
     unit: str = "chars"
     chunk_size: int = 1200
     overlap: int = 200
+
+    def __post_init__(self) -> None:
+        if self.unit not in VALID_UNITS:
+            raise ConfigError(
+                f"Invalid chunking unit {self.unit!r}. "
+                f"Must be one of: {', '.join(sorted(VALID_UNITS))}."
+            )
+        if self.strategy not in VALID_STRATEGIES:
+            raise ConfigError(
+                f"Invalid chunking strategy {self.strategy!r}. "
+                f"Must be one of: {', '.join(sorted(VALID_STRATEGIES))}."
+            )
 
 
 @dataclass

@@ -1,4 +1,3 @@
-import re
 from pathlib import Path
 
 from .parser import (
@@ -10,27 +9,21 @@ from .parser import (
 )
 
 
-def _split_paragraphs_drop_empty(s: str) -> list[str]:
-    """Split on two-or-more consecutive newlines; drop empty segments."""
-    if not s:
-        return []
-    return [p for p in re.split(r"\n{2,}", s) if p]
-
-
-class PlainTextFallbackParser:
+class MarkdownParser:
     """
-    Fallback parser for plain text and unrecognised file types.
+    Parser for Markdown files (.md, .markdown).
 
-    Decodes bytes, normalises line endings, collapses multiple blank lines
-    into a single paragraph break (``\\n\\n``), and returns clean paragraph
-    text.  No heading markers are added — the file is treated as unstructured
-    prose.  Chunking strategies that need heading structure (e.g.
-    ``headingAware``) will find no ``#`` markers and degrade gracefully to
-    paragraph-level splitting.
+    Responsibility: decode bytes and normalise line endings, then return the
+    text as-is.  Markdown headings (# / ## / ###) and paragraph breaks (\n\n)
+    are already the canonical structure that chunking strategies such as
+    ``headingAware`` rely on — stripping or re-joining them here would destroy
+    that signal.
+
+    No extra dependencies required.
     """
 
-    parser_id: str = "plaintext:v1"
-    supported_mimetypes: set[str] = {"text/plain"}
+    parser_id: str = "markdown:v1"
+    supported_mimetypes: set[str] = {"text/markdown", "text/x-markdown"}
 
     def parse(self, inp: ParseInput) -> ParseResult:
         if not inp.data:
@@ -51,9 +44,7 @@ class PlainTextFallbackParser:
                 f"{encoding_error_ratio:.1%} of content)."
             )
 
-        raw = _normalize_line_endings(raw)
-        paragraphs = _split_paragraphs_drop_empty(raw)
-        text = "\n\n".join(paragraphs)
+        text = _normalize_line_endings(raw)
 
         src = SourceRef(
             scheme="file",
@@ -67,14 +58,10 @@ class PlainTextFallbackParser:
             source=src,
         )
 
-        effective = (
-            "text/plain" if inp.mimetype == "application/octet-stream" else inp.mimetype
-        )
-
         return ParseResult(
             document=doc,
             parser_id=self.parser_id,
-            effective_mimetype=effective,
+            effective_mimetype="text/markdown",
             warnings=warnings,
             encoding_error_ratio=encoding_error_ratio,
         )
