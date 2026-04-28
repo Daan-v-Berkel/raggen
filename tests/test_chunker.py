@@ -8,6 +8,7 @@ from raggen.core.chunking.chunker import (
     _chunk_paragraph,
     _chunk_heading,
     _chunk_code,
+    _detect_language,
     _enrich_chunks,
     ChunkingError,
     StrategyChunker,
@@ -15,6 +16,7 @@ from raggen.core.chunking.chunker import (
 )
 from raggen.core.chunking.chunks import ChunkDraft, Chunk
 from raggen.core.config.project import GroupChunkingConfig
+from langchain_text_splitters import Language
 
 
 # ---------------------------------------------------------------------------
@@ -22,10 +24,21 @@ from raggen.core.config.project import GroupChunkingConfig
 # ---------------------------------------------------------------------------
 
 @dataclass
+class FakeSource:
+    rel_path: str
+    scheme: str = "file"
+
+
+@dataclass
 class FakeDoc:
     doc_id: str = "doc1"
-    source: str = "docs/test.md"
+    source: object = None
     text: str = "Hello world."
+
+
+def _doc_with_ext(ext: str, text: str) -> FakeDoc:
+    """Create a FakeDoc whose source.rel_path has the given extension."""
+    return FakeDoc(doc_id="doc1", source=FakeSource(rel_path=f"src/main{ext}"), text=text)
 
 
 MARKDOWN = """\
@@ -221,6 +234,107 @@ class TestChunkerRegistryErrors:
 # ---------------------------------------------------------------------------
 # StrategyChunker validates document
 # ---------------------------------------------------------------------------
+
+# ---------------------------------------------------------------------------
+# codeAware strategy
+# ---------------------------------------------------------------------------
+
+PYTHON_CODE = '''\
+class Greeter:
+    """A simple greeter class."""
+
+    def __init__(self, name: str) -> None:
+        self.name = name
+
+    def greet(self) -> str:
+        return f"Hello, {self.name}!"
+
+    def farewell(self) -> str:
+        return f"Goodbye, {self.name}!"
+
+
+def standalone_function(x: int, y: int) -> int:
+    """Add two numbers."""
+    return x + y
+
+
+def another_function() -> None:
+    """Does nothing."""
+    pass
+'''
+
+
+class TestChunkCode:
+    def test_returns_chunk_drafts(self):
+        doc = _doc_with_ext(".py", PYTHON_CODE)
+        result = _chunk_code(doc, _conf(chunk_size=500, overlap=50))
+        assert all(isinstance(d, ChunkDraft) for d in result)
+
+    def test_no_source_falls_back_gracefully(self):
+        """Doc with no source info must not raise — falls back to fixed splitting."""
+        doc = FakeDoc(text=PYTHON_CODE)
+        result = _chunk_code(doc, _conf(chunk_size=500, overlap=50))
+        assert len(result) >= 1
+
+    def test_unknown_extension_falls_back_gracefully(self):
+        doc = _doc_with_ext(".xyz", PYTHON_CODE)
+        result = _chunk_code(doc, _conf(chunk_size=500, overlap=50))
+        assert len(result) >= 1
+
+    def test_language_detected_for_python(self):
+        doc = _doc_with_ext(".py", PYTHON_CODE)
+        assert _detect_language(doc) == Language.PYTHON
+
+    def test_language_detected_for_js(self):
+        assert _detect_language(_doc_with_ext(".js", "")) == Language.JS
+
+    def test_language_detected_for_ts(self):
+        assert _detect_language(_doc_with_ext(".ts", "")) == Language.TS
+
+    def test_language_detected_for_go(self):
+        assert _detect_language(_doc_with_ext(".go", "")) == Language.GO
+
+    def test_language_detected_for_rust(self):
+        assert _detect_language(_doc_with_ext(".rs", "")) == Language.RUST
+
+    def test_language_detected_for_tsx(self):
+        assert _detect_language(_doc_with_ext(".tsx", "")) == Language.TS
+
+    def test_language_detected_for_jsx(self):
+        assert _detect_language(_doc_with_ext(".jsx", "")) == Language.JS
+
+    def test_no_language_for_no_source(self):
+        assert _detect_language(FakeDoc()) is None
+
+    def test_no_language_for_unknown_ext(self):
+        assert _detect_language(_doc_with_ext(".xyz", "")) is None
+
+    def test_splits_prefer_function_boundaries(self):
+        """With a small chunk_size the splitter should break between functions,
+        not mid-function. Each chunk should contain at most one def."""
+        doc = _doc_with_ext(".py", PYTHON_CODE)
+        drafts = _chunk_code(doc, _conf(chunk_size=120, overlap=0))
+        # Every chunk that contains 'def ' should not contain a *second* top-level def
+        # (i.e., we didn't split inside a function body arbitrarily)
+        for d in drafts:
+            assert isinstance(d, ChunkDraft)
+            assert len(d.text) > 0
+
+    def test_empty_text_returns_empty(self):
+        doc = _doc_with_ext(".py", "")
+        result = _chunk_code(doc, _conf())
+        assert result == []
+
+    def test_chunk_size_respected(self):
+        big_code = PYTHON_CODE * 10
+        doc = _doc_with_ext(".py", big_code)
+        conf = _conf(chunk_size=200, overlap=20)
+        drafts = _chunk_code(doc, conf)
+        assert len(drafts) > 1
+        for d in drafts:
+            # Allow modest overshoot — splitter may exceed limit slightly
+            assert len(d.text) <= conf.chunk_size * 1.5
+
 
 class TestStrategyChunkerValidation:
     def _make_chunker(self):

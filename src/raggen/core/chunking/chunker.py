@@ -3,12 +3,14 @@ from __future__ import annotations
 from .chunks import Chunk, ChunkDraft
 import hashlib
 import json
+from pathlib import Path
 from raggen.core.config.project import GroupChunkingConfig, ProjectConfig
 from raggen.core.parsing.parser import Document
-from typing import List, Callable
+from typing import List, Callable, Optional
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from langchain_text_splitters import (
+    Language,
     RecursiveCharacterTextSplitter,
     MarkdownHeaderTextSplitter,
 )
@@ -242,7 +244,103 @@ def _chunk_heading(doc: Document, conf: GroupChunkingConfig) -> list[ChunkDraft]
     return drafts
 
 
+# ---------------------------------------------------------------------------
+# codeAware helpers
+# ---------------------------------------------------------------------------
+
+# Maps file extensions to LangChain Language enum values so the splitter can
+# use language-specific separators (e.g. \nclass , \ndef  for Python).
+_EXT_TO_LANGUAGE: dict[str, Language] = {
+    # Python
+    ".py": Language.PYTHON,
+    ".pyw": Language.PYTHON,
+    # JavaScript / TypeScript
+    ".js": Language.JS,
+    ".mjs": Language.JS,
+    ".cjs": Language.JS,
+    ".jsx": Language.JS,
+    ".ts": Language.TS,
+    ".tsx": Language.TS,
+    # Go
+    ".go": Language.GO,
+    # Rust
+    ".rs": Language.RUST,
+    # Ruby
+    ".rb": Language.RUBY,
+    # Java
+    ".java": Language.JAVA,
+    # C / C++
+    ".c": Language.C,
+    ".h": Language.C,
+    ".cpp": Language.CPP,
+    ".cc": Language.CPP,
+    ".cxx": Language.CPP,
+    ".hpp": Language.CPP,
+    # C#
+    ".cs": Language.CSHARP,
+    # Swift
+    ".swift": Language.SWIFT,
+    # Kotlin
+    ".kt": Language.KOTLIN,
+    ".kts": Language.KOTLIN,
+    # Scala
+    ".scala": Language.SCALA,
+    # PHP
+    ".php": Language.PHP,
+    # R
+    ".r": Language.R,
+    # Lua
+    ".lua": Language.LUA,
+    # Perl
+    ".pl": Language.PERL,
+    ".pm": Language.PERL,
+    # Elixir
+    ".ex": Language.ELIXIR,
+    ".exs": Language.ELIXIR,
+    # Haskell
+    ".hs": Language.HASKELL,
+    # Solidity
+    ".sol": Language.SOL,
+    # Protobuf
+    ".proto": Language.PROTO,
+    # PowerShell
+    ".ps1": Language.POWERSHELL,
+}
+
+
+def _detect_language(doc: Document) -> Optional[Language]:
+    """Return the Language enum for the document's file extension, or None."""
+    source = getattr(doc, "source", None)
+    rel_path = getattr(source, "rel_path", None) if source else None
+    if not rel_path:
+        return None
+    return _EXT_TO_LANGUAGE.get(Path(rel_path).suffix.lower())
+
+
 def _chunk_code(doc: Document, conf: GroupChunkingConfig) -> list[ChunkDraft]:
-    # Not yet implemented — will be added in the codeAware step.
-    # Falls back to fixed chunking.
-    return _chunk_fixed(doc, conf)
+    """Split code files using language-aware separators.
+
+    Uses ``RecursiveCharacterTextSplitter.from_language()`` which prioritises
+    splitting on top-level boundaries (class definitions, function definitions,
+    blank lines) before resorting to line or character splits.  This keeps
+    functions and classes intact wherever the chunk size allows.
+
+    Files with an unrecognised extension fall back to fixed chunking so that
+    any file assigned to a ``codeAware`` group is still processed correctly.
+    """
+    text = getattr(doc, "text", "") or ""
+    language = _detect_language(doc)
+
+    if language is not None:
+        splitter = RecursiveCharacterTextSplitter.from_language(
+            language=language,
+            chunk_size=conf.chunk_size,
+            chunk_overlap=conf.overlap,
+        )
+    else:
+        splitter = RecursiveCharacterTextSplitter(
+            chunk_size=conf.chunk_size,
+            chunk_overlap=conf.overlap,
+        )
+
+    return [ChunkDraft(text=t) for t in splitter.split_text(text)]
