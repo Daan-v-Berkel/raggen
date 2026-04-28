@@ -197,6 +197,30 @@ directly to content tokens. Account for special tokens when setting a limit
 close to your model's maximum sequence length — for a 512-token model a safe
 `chunk_size` is around `500`.
 
+### Model sequence length limits
+
+Every embedding model has a hard maximum sequence length (commonly 256 or 512
+tokens). Chunks that exceed this limit are **silently truncated by the model**
+— the stored text is complete, but the embedding only represents the first N
+tokens. This degrades retrieval quality without any visible error.
+
+raggen deals with this as follows:
+
+- **`unit = "tokens"`** — raggen compares `chunk_size` against the model's
+  limit at startup and raises a `ConfigError` before any file is processed.
+
+- **`unit = "chars"`** — the relationship between characters and tokens varies
+  by content, so an exact check is not possible upfront. raggen applies a
+  conservative estimate of **3 chars per token**: if your `chunk_size` implies
+  chunks that could exceed the model limit under that estimate, a warning is
+  emitted at startup. The warning is clearly labelled as an estimate — actual
+  content may be fine — but it is a signal to either reduce `chunk_size` or
+  switch to `unit = "tokens"` for a precise guarantee.
+
+> **Tip:** When in doubt, use `unit = "tokens"` with a `chunk_size` a few
+> tokens below the model's maximum. This gives an exact guarantee and avoids
+> surprises regardless of content density.
+
 ---
 
 ## Vector backends
