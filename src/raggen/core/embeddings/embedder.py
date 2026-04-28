@@ -74,6 +74,11 @@ class LocalSentenceTransformerEmbedder:
     def dim(self) -> int:
         return int(self._model.get_sentence_embedding_dimension())
 
+    @property
+    def max_seq_length(self) -> int:
+        """Maximum number of tokens the model can encode (including special tokens)."""
+        return int(self._model.max_seq_length)
+
     def get_length_function(self):
         """Return a callable (str) -> int that counts tokens using this model's tokenizer.
 

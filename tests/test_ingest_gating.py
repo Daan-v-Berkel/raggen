@@ -20,6 +20,10 @@ def _dummy_embedder_factory(*args, **kwargs):
 
         def get_length_function(self):
             return len
+
+        @property
+        def max_seq_length(self):
+            return 512
     return Dummy()
 
 
