@@ -10,6 +10,7 @@ from raggen.core.ingest.gating import (
 )
 from raggen.core.parsing.parser import ParserRegistry, ParseInput, ParserService
 from raggen.core.parsing.PlainTextParser import PlainTextFallbackParser
+from raggen.core.parsing.MarkdownParser import MarkdownParser
 from raggen.core.chunking.chunker import ChunkerRegistry
 from raggen.core.embeddings.embedder import (
     LocalSentenceTransformerEmbedder,
@@ -38,6 +39,7 @@ def do_ingest(destructive: bool = False) -> ResultEnvelope:
 
     # total files scanned includes skipped empty files
     registry = ParserRegistry(fallback_parser=PlainTextFallbackParser())
+    registry.register(MarkdownParser())
     parser_service = ParserService(registry)
     embedder = LocalSentenceTransformerEmbedder(
         cfg.embedding.model_id,
