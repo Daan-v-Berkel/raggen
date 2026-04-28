@@ -86,11 +86,7 @@ class ChunkerRegistry:
         Unknown groups resolve to the configured fallback group.
         """
         if group not in self.group_configs:
-            available = list(self.group_configs.keys())
-            raise ValueError(
-                f"No chunking config registered for group '{group}'. "
-                f"Available groups: {available}"
-            )
+            group = self.fallback_group
         chunk_config = self.group_configs[group]
         return self._build_chunker(chunk_config, length_function)
 

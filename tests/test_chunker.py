@@ -250,6 +250,35 @@ class TestChunkerRegistryErrors:
         with pytest.raises(ConfigError, match="strategy"):
             _conf(strategy="nonexistent")
 
+    def test_unknown_group_falls_back_to_fallback_group(self):
+        """get() with an unrecognised group must silently use the fallback
+        group config rather than raising."""
+        registry = object.__new__(ChunkerRegistry)
+        fallback_conf = _conf(strategy="fixed", chunk_size=999)
+        registry.group_configs = {
+            "fallback": fallback_conf,
+            "docs": _conf(strategy="headingAware"),
+        }
+        registry.fallback_group = "fallback"
+
+        chunker = registry.get("completely-unknown-group")
+
+        assert isinstance(chunker, StrategyChunker)
+        assert chunker.config.chunk_size == 999
+
+    def test_known_group_is_not_overridden_by_fallback(self):
+        """get() must still return the group's own config when it exists."""
+        registry = object.__new__(ChunkerRegistry)
+        registry.group_configs = {
+            "fallback": _conf(strategy="fixed", chunk_size=100),
+            "docs": _conf(strategy="headingAware", chunk_size=500),
+        }
+        registry.fallback_group = "fallback"
+
+        chunker = registry.get("docs")
+
+        assert chunker.config.chunk_size == 500
+
 
 # ---------------------------------------------------------------------------
 # StrategyChunker validates document
