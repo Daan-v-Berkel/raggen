@@ -8,7 +8,10 @@ from raggen.core.parsing.parser import Document
 from typing import List, Callable
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from langchain_text_splitters import RecursiveCharacterTextSplitter
+from langchain_text_splitters import (
+    RecursiveCharacterTextSplitter,
+    MarkdownHeaderTextSplitter,
+)
 
 
 class ChunkingError(RuntimeError):
@@ -178,10 +181,65 @@ def _chunk_paragraph(doc: Document, conf: GroupChunkingConfig) -> list[ChunkDraf
     return [ChunkDraft(text=t) for t in splitter.split_text(getattr(doc, "text", ""))]
 
 
+_HEADING_LEVELS = [
+    ("#", "H1"),
+    ("##", "H2"),
+    ("###", "H3"),
+]
+
+
 def _chunk_heading(doc: Document, conf: GroupChunkingConfig) -> list[ChunkDraft]:
-    # Not yet implemented — will be added in the headingAware step.
-    # Falls back to paragraphMerge which is the closest semantic approximation.
-    return _chunk_paragraph(doc, conf)
+    """Split on Markdown headings, then sub-split oversized sections.
+
+    Each top-level section produced by MarkdownHeaderTextSplitter becomes
+    one or more ChunkDrafts depending on whether it exceeds ``chunk_size``.
+    All sub-chunks inherit the section's heading path metadata so that a
+    retrieval result can always report which section it came from.
+
+    Non-markdown documents (no headings) are handled transparently: the
+    splitter returns the whole text as a single section with empty metadata,
+    which then goes through the same sub-splitting path as any other section.
+    """
+    text = getattr(doc, "text", "") or ""
+
+    md_splitter = MarkdownHeaderTextSplitter(
+        headers_to_split_on=_HEADING_LEVELS,
+        strip_headers=True,
+    )
+    sub_splitter = RecursiveCharacterTextSplitter(
+        chunk_size=conf.chunk_size,
+        chunk_overlap=conf.overlap,
+    )
+
+    sections = md_splitter.split_text(text)
+    drafts: list[ChunkDraft] = []
+
+    for section in sections:
+        meta = section.metadata  # e.g. {"H1": "Intro", "H2": "Install"}
+        section_path = [
+            meta[key]
+            for _, key in _HEADING_LEVELS
+            if key in meta
+        ]
+        heading = section_path[-1] if section_path else None
+        section_text = section.page_content
+
+        # Sub-split sections that exceed chunk_size
+        if len(section_text) <= conf.chunk_size:
+            pieces = [section_text]
+        else:
+            pieces = sub_splitter.split_text(section_text)
+
+        for piece in pieces:
+            drafts.append(
+                ChunkDraft(
+                    text=piece,
+                    heading=heading,
+                    section_path=section_path if section_path else None,
+                )
+            )
+
+    return drafts
 
 
 def _chunk_code(doc: Document, conf: GroupChunkingConfig) -> list[ChunkDraft]:
