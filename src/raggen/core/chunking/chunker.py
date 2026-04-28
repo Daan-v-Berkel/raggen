@@ -106,12 +106,6 @@ class ChunkerRegistry:
             "codeAware": _chunk_code,
         }
 
-        if strategy not in strategy_map:
-            raise ChunkingError(
-                f"Unknown chunking strategy: {strategy!r}. "
-                f"Available strategies: {', '.join(sorted(strategy_map))}"
-            )
-
         return StrategyChunker(conf, strategy_map[strategy], length_function)
 
 

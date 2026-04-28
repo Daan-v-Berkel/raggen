@@ -15,7 +15,7 @@ from raggen.core.chunking.chunker import (
     ChunkerRegistry,
 )
 from raggen.core.chunking.chunks import ChunkDraft, Chunk
-from raggen.core.config.project import GroupChunkingConfig
+from raggen.core.config.project import GroupChunkingConfig, ConfigError
 from langchain_text_splitters import Language
 
 
@@ -222,13 +222,33 @@ class TestEnrichChunks:
 # ChunkingError on unknown strategy
 # ---------------------------------------------------------------------------
 
+class TestGroupChunkingConfigValidation:
+    def test_invalid_unit_raises_config_error(self):
+        with pytest.raises(ConfigError, match="unit"):
+            GroupChunkingConfig(unit="foobar")
+
+    def test_invalid_unit_names_are_rejected(self):
+        for bad in ["character", "token", "chars ", "CHARS", ""]:
+            with pytest.raises(ConfigError):
+                GroupChunkingConfig(unit=bad)
+
+    def test_valid_units_accepted(self):
+        GroupChunkingConfig(unit="chars")
+        GroupChunkingConfig(unit="tokens")
+
+    def test_invalid_strategy_raises_config_error(self):
+        with pytest.raises(ConfigError, match="strategy"):
+            GroupChunkingConfig(strategy="nonexistent")
+
+    def test_valid_strategies_accepted(self):
+        for s in ["fixed", "headingAware", "paragraphMerge", "codeAware"]:
+            GroupChunkingConfig(strategy=s)
+
+
 class TestChunkerRegistryErrors:
-    def test_unknown_strategy_raises(self):
-        conf = _conf(strategy="nonexistent")
-        # Bypass __init__ so we don't need a real ProjectConfig loaded
-        registry = object.__new__(ChunkerRegistry)
-        with pytest.raises(ChunkingError, match="Unknown chunking strategy"):
-            registry._build_chunker(conf)
+    def test_unknown_strategy_raises_at_config_construction(self):
+        with pytest.raises(ConfigError, match="strategy"):
+            _conf(strategy="nonexistent")
 
 
 # ---------------------------------------------------------------------------
@@ -334,6 +354,112 @@ class TestChunkCode:
         for d in drafts:
             # Allow modest overshoot — splitter may exceed limit slightly
             assert len(d.text) <= conf.chunk_size * 1.5
+
+
+# ---------------------------------------------------------------------------
+# unit = "tokens" — length_function wiring
+# ---------------------------------------------------------------------------
+
+class TestTokenUnit:
+    """Verify that a custom length_function is threaded through every strategy
+    and actually influences the splitting decisions."""
+
+    def _double_len(self, text: str) -> int:
+        """Counts every character twice — effective chunk limit is half the chars."""
+        return len(text) * 2
+
+    def _recording_fn(self):
+        """Returns (fn, calls) — calls accumulates every text passed to fn."""
+        calls: list[str] = []
+        def fn(text: str) -> int:
+            calls.append(text)
+            return len(text)
+        return fn, calls
+
+    # --- length_fn is actually called -----------------------------------------
+
+    def test_fixed_calls_length_fn(self):
+        fn, calls = self._recording_fn()
+        _chunk_fixed(FakeDoc(text="word " * 50), _conf(chunk_size=50), fn)
+        assert len(calls) > 0
+
+    def test_paragraph_calls_length_fn(self):
+        fn, calls = self._recording_fn()
+        text = "para one\n\npara two\n\npara three\n\npara four"
+        _chunk_paragraph(FakeDoc(text=text), _conf(chunk_size=200, overlap=0), fn)
+        assert len(calls) > 0
+
+    def test_heading_calls_length_fn(self):
+        fn, calls = self._recording_fn()
+        _chunk_heading(FakeDoc(text=MARKDOWN), _conf(chunk_size=100), fn)
+        assert len(calls) > 0
+
+    def test_code_calls_length_fn(self):
+        fn, calls = self._recording_fn()
+        _chunk_code(_doc_with_ext(".py", PYTHON_CODE), _conf(chunk_size=200), fn)
+        assert len(calls) > 0
+
+    # --- length_fn actually changes the outcome --------------------------------
+
+    def test_fixed_double_len_produces_more_chunks(self):
+        """Doubling the measured length halves the effective char limit,
+        so we expect more chunks than with plain len."""
+        text = "word " * 100  # 500 chars
+        doc = FakeDoc(text=text)
+        conf = _conf(chunk_size=100, overlap=0)
+
+        chunks_chars = _chunk_fixed(doc, conf, len)
+        chunks_doubled = _chunk_fixed(doc, conf, self._double_len)
+
+        assert len(chunks_doubled) > len(chunks_chars)
+
+    def test_paragraph_double_len_produces_more_chunks(self):
+        paras = "\n\n".join(["sentence " * 10] * 8)  # 8 paragraphs
+        doc = FakeDoc(text=paras)
+        conf = _conf(chunk_size=120, overlap=0)
+
+        chunks_chars = _chunk_paragraph(doc, conf, len)
+        chunks_doubled = _chunk_paragraph(doc, conf, self._double_len)
+
+        assert len(chunks_doubled) >= len(chunks_chars)
+
+    def test_heading_size_check_uses_length_fn(self):
+        """With a zero length function every section appears empty, so nothing
+        is ever sub-split — result must be <= sections found by the md splitter."""
+        zero_fn = lambda t: 0  # noqa: E731
+        doc = FakeDoc(text=LONG_SECTION)
+        conf = _conf(chunk_size=50, overlap=0)
+
+        drafts_zero = _chunk_heading(doc, conf, zero_fn)
+        drafts_len = _chunk_heading(doc, conf, len)
+
+        # With zero_fn no section ever exceeds chunk_size → no sub-splitting
+        assert len(drafts_zero) < len(drafts_len)
+
+    def test_code_double_len_produces_more_chunks(self):
+        big = PYTHON_CODE * 5
+        doc = _doc_with_ext(".py", big)
+        conf = _conf(chunk_size=300, overlap=0)
+
+        chunks_chars = _chunk_code(doc, conf, len)
+        chunks_doubled = _chunk_code(doc, conf, self._double_len)
+
+        assert len(chunks_doubled) >= len(chunks_chars)
+
+    # --- StrategyChunker and registry wire-up ---------------------------------
+
+    def test_strategy_chunker_passes_length_fn_to_strategy(self):
+        fn, calls = self._recording_fn()
+        chunker = StrategyChunker(_conf(), _chunk_fixed, length_function=fn)
+        chunker.chunk(FakeDoc(text="hello world this is some text"))
+        assert len(calls) > 0
+
+    def test_registry_build_chunker_wires_length_fn(self):
+        fn, calls = self._recording_fn()
+        registry = object.__new__(ChunkerRegistry)
+        chunker = registry._build_chunker(_conf(strategy="fixed"), fn)
+        chunker.chunk(FakeDoc(text="hello world this is some text"))
+        assert len(calls) > 0
 
 
 class TestStrategyChunkerValidation:
