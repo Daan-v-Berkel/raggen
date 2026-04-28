@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from .chunks import Chunk
+from .chunks import Chunk, ChunkDraft
 import hashlib
 import json
 from raggen.core.config.project import GroupChunkingConfig, ProjectConfig
@@ -36,7 +36,7 @@ class StrategyChunker(BaseChunker):
     def __init__(
         self,
         config: GroupChunkingConfig,
-        strategy_fn: Callable[[Document, GroupChunkingConfig], list[Chunk]],
+        strategy_fn: Callable[[Document, GroupChunkingConfig], list[ChunkDraft]],
     ):
         super().__init__(config)
         self._strategy_fn = strategy_fn
@@ -79,28 +79,24 @@ class ChunkerRegistry:
         strategy = getattr(conf, "strategy", "fixed")
 
         strategy_map: dict[
-            str, Callable[[Document, GroupChunkingConfig], list[Chunk]]
+            str, Callable[[Document, GroupChunkingConfig], list[ChunkDraft]]
         ] = {
             "fixed": _chunk_fixed,
             "headingAware": _chunk_heading,
             "paragraphMerge": _chunk_paragraph,
-            "tokenAware": _chunk_token,
-            "ast": _chunk_ast,
+            "codeAware": _chunk_code,
         }
 
         if strategy not in strategy_map:
-            raise ChunkingError(f"Unknown chunking strategy: {strategy!r}")
+            raise ChunkingError(
+                f"Unknown chunking strategy: {strategy!r}. "
+                f"Available strategies: {', '.join(sorted(strategy_map))}"
+            )
 
         return StrategyChunker(conf, strategy_map[strategy])
 
 
 def _validate_document(doc: Document) -> None:
-    """
-    Minimal sanity check for parsed documents.
-
-    We keep this intentionally loose because the exact Document model
-    may evolve independently from chunking.
-    """
     if doc is None:
         raise ChunkingError("Cannot chunk a null document.")
 
@@ -113,11 +109,7 @@ def _validate_document(doc: Document) -> None:
 
 
 def _stable_config_hash(conf: GroupChunkingConfig) -> str:
-    """
-    Stable hash for the chunking config used to produce chunks.
-    """
     payload = conf.to_dict()
-
     conf_json = json.dumps(payload, sort_keys=True, ensure_ascii=False)
     return hashlib.sha256(conf_json.encode("utf-8")).hexdigest()
 
@@ -125,46 +117,38 @@ def _stable_config_hash(conf: GroupChunkingConfig) -> str:
 def _enrich_chunks(
     doc: Document,
     conf: GroupChunkingConfig,
-    pieces: list[str],
+    pieces: list[ChunkDraft],
 ) -> list[Chunk]:
-    """
-    Convert raw text pieces into the project's canonical Chunk objects.
-
-    This version does not rely on char offsets.
-    """
+    """Convert strategy output into canonical Chunk objects."""
     config_hash = _stable_config_hash(conf)
     doc_id = getattr(doc, "doc_id", "unknown")
     source = getattr(doc, "source", None)
 
     out: List[Chunk] = []
 
-    for idx, piece in enumerate(pieces):
+    for idx, draft in enumerate(pieces):
+
         chunk_id = f"{doc_id}:{config_hash}:{idx}"
-
-        meta = {
-            "page_start": None,
-            "page_end": None,
-            "heading": None,
-            "section_path": None,
-            "source": source,
-        }
-
-        stats = {
-            "char_count": len(piece) if piece is not None else None,
-            "token_count": None,
-        }
 
         out.append(
             Chunk(
+                chunk_id=chunk_id,
                 doc_id=doc_id,
                 chunk_index=idx,
-                text=piece,
-                start_char=None,
-                end_char=None,
-                metadata=meta,
-                stats=stats,
+                text=draft.text,
+                start_char=draft.start_char,
+                end_char=draft.end_char,
+                metadata=Chunk.MetaData(
+                    page_start=draft.page_start,
+                    heading=draft.heading,
+                    section_path=draft.section_path,
+                    source=source,
+                ),
+                stats=Chunk.Stats(
+                    char_count=len(draft.text) if draft.text is not None else None,
+                    token_count=None,
+                ),
                 config_hash=config_hash,
-                chunk_id=chunk_id,
             )
         )
 
@@ -172,38 +156,35 @@ def _enrich_chunks(
 
 
 # ---------------------------------------------------------------------------
-# Strategy hooks
+# Strategy implementations
 # ---------------------------------------------------------------------------
 
 
-def _chunk_fixed(doc: Document, conf: GroupChunkingConfig) -> list[str]:
+def _chunk_fixed(doc: Document, conf: GroupChunkingConfig) -> list[ChunkDraft]:
     splitter = RecursiveCharacterTextSplitter(
         chunk_size=conf.chunk_size,
         chunk_overlap=conf.overlap,
     )
-    return splitter.split_text(getattr(doc, "text", ""))
+    return [ChunkDraft(text=t) for t in splitter.split_text(getattr(doc, "text", ""))]
 
 
-def _chunk_heading(doc: Document, conf: GroupChunkingConfig) -> list[str]:
-    # Not implemented: fallback to fixed
-    return _chunk_fixed(doc, conf)
-
-
-def _chunk_paragraph(doc: Document, conf: GroupChunkingConfig) -> list[str]:
+def _chunk_paragraph(doc: Document, conf: GroupChunkingConfig) -> list[ChunkDraft]:
     splitter = RecursiveCharacterTextSplitter(
         separators=["\n\n"],
         keep_separator=False,
         chunk_size=conf.chunk_size,
         chunk_overlap=conf.overlap,
     )
-    return splitter.split_text(getattr(doc, "text", ""))
+    return [ChunkDraft(text=t) for t in splitter.split_text(getattr(doc, "text", ""))]
 
 
-def _chunk_ast(doc: Document, conf: GroupChunkingConfig) -> list[str]:
-    # Not yet implemented
-    return _chunk_fixed(doc, conf)
+def _chunk_heading(doc: Document, conf: GroupChunkingConfig) -> list[ChunkDraft]:
+    # Not yet implemented — will be added in the headingAware step.
+    # Falls back to paragraphMerge which is the closest semantic approximation.
+    return _chunk_paragraph(doc, conf)
 
 
-def _chunk_token(doc: Document, conf: GroupChunkingConfig) -> list[str]:
-    # Token-aware chunking not implemented yet; fallback to fixed
+def _chunk_code(doc: Document, conf: GroupChunkingConfig) -> list[ChunkDraft]:
+    # Not yet implemented — will be added in the codeAware step.
+    # Falls back to fixed chunking.
     return _chunk_fixed(doc, conf)

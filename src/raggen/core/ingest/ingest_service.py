@@ -21,6 +21,7 @@ from raggen.core.scanner import scan_files
 from raggen.core.runtime import get_engine
 from raggen.core.results.envelope import ResultEnvelope, ResultMessage, init_result
 from datetime import datetime
+import json
 from raggen.core.runs.store import get_run_store
 from raggen.core.runs.decorators import persist_result
 
@@ -160,11 +161,10 @@ def do_ingest(destructive: bool = False) -> ResultEnvelope:
                             "doc_id": ch.doc_id,
                             "chunk_index": ch.chunk_index,
                             "text": ch.text,
-                            "start_offset": getattr(ch, "start_offset", 0) or 0,
-                            "end_offset": getattr(ch, "end_offset", len(ch.text))
-                            or len(ch.text),
-                            "page_number": getattr(ch, "page_number", None),
-                            "heading_path_json": getattr(ch, "heading_path_json", None),
+                            "start_offset": ch.start_char if ch.start_char is not None else 0,
+                            "end_offset": ch.end_char if ch.end_char is not None else len(ch.text),
+                            "page_number": ch.metadata.page_start,
+                            "heading_path_json": json.dumps(ch.metadata.section_path) if ch.metadata.section_path else None,
                             "chunk_config_hash": ch.config_hash,
                             "created_at": ts,
                         }
@@ -174,7 +174,7 @@ def do_ingest(destructive: bool = False) -> ResultEnvelope:
                             "chunk_id": ch.chunk_id,
                             "embedding_model_id": cfg.embedding.model_id,
                             "dim": cfg.embedding.dim,
-                            "normalized": 1 if cfg.embedding.normalize else 0,
+                            "normalized": cfg.embedding.normalize,
                             "created_at": ts,
                         }
                     )
