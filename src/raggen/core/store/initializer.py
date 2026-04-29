@@ -4,9 +4,10 @@ from sqlalchemy import select
 from sqlalchemy.engine import Engine
 
 from raggen.core.config.project import ProjectConfig
+from raggen.core.config.drift_tiers import DriftTier, field_tier_info
 from .metadata_schema import rag_project
 from .metadata_backends.sqlalchemy import SqlalchemyMetadataBackend
-from .exceptions import SchemaMismatchError, BackendLoadError, BackendNotSupportedError
+from .exceptions import FieldChange, SchemaMismatchError, BackendLoadError, BackendNotSupportedError
 from .plugin_loader import load_vector_backend, resolve_vector_backend_import
 from raggen.core.runtime import get_engine
 import json
@@ -19,49 +20,56 @@ def _get_attr_path(obj, path: str):
     return value
 
 
-def _compare_configs(stored: dict, cfg: ProjectConfig) -> dict:
-    diffs = {}
-    checks = [
-        ("schema_version", "schema_version"),
-        ("backend_key", "storage.backend_key"),
-        ("database_url", "storage.database_url"),
-        ("embedding_model_id", "embedding.model_id"),
-        ("embedding_dim", "embedding.dim"),
-        ("embedding_normalized", "embedding.normalize"),
-        ("query_model_id", "query.model_id"),
-    ]
+# Mapping of (stored_column_name, config_field_path) pairs to compare.
+# config_field_path is passed to classify_field / field_tier_info to determine
+# whether a change is BREAKING, STALE, or RUNTIME.
+_COMPARE_FIELDS: list[tuple[str, str]] = [
+    ("schema_version",    "schema_version"),
+    ("backend_key",       "storage.backend_key"),
+    ("database_url",      "storage.database_url"),
+    ("embedding_model_id","embedding.model_id"),
+    ("embedding_dim",     "embedding.dim"),
+    ("embedding_normalized", "embedding.normalize"),
+    ("query_model_id",    "query.model_id"),
+]
 
-    for stored_k, cfg_path in checks:
-        stored_val = getattr(stored, stored_k, "")
-        cfg_val = _get_attr_path(cfg, cfg_path)
 
+def _collect_changes(stored, cfg: ProjectConfig) -> list[FieldChange]:
+    """Compare every tracked field and return a FieldChange for each that differs."""
+    changes: list[FieldChange] = []
+    for stored_key, field_path in _COMPARE_FIELDS:
+        stored_val = getattr(stored, stored_key, None)
+        cfg_val = _get_attr_path(cfg, field_path)
         if stored_val != cfg_val:
-            diffs[stored_k] = {
-                "stored": stored_val,
-                "expected": cfg_val,
-            }
-
-    return diffs
+            info = field_tier_info(field_path)
+            changes.append(FieldChange(
+                field=field_path,
+                old_value=stored_val,
+                new_value=cfg_val,
+                tier=info.tier,
+                reason=info.reason,
+            ))
+    return changes
 
 
 def validate_existing_project(engine: Engine, cfg: ProjectConfig) -> None:
-    conn = engine.connect()
     with engine.connect() as conn:
         sel = select(rag_project).where(rag_project.c.id == 1)
         try:
             res = conn.execute(sel).mappings().fetchone()
         except Exception:
-            # Table may not exist yet; treat as no stored project
+            # Table may not exist yet; treat as no stored project.
             res = None
     if not res:
         return
-    diffs = _compare_configs(res, cfg)
 
-    if diffs:
-        raise SchemaMismatchError(
-            f"Stored project configuration differs: {json.dumps(
-                diffs, indent=2)}\nRun with destructive=True to reinitialize."
-        )
+    changes = _collect_changes(res, cfg)
+
+    # Only BREAKING changes require a rebuild.  STALE changes are handled at
+    # ingest time (Step 6); RUNTIME changes are silently ignored.
+    breaking = [c for c in changes if c.tier == DriftTier.BREAKING]
+    if breaking:
+        raise SchemaMismatchError(breaking)
 
 
 def _fetch_project_row(engine):

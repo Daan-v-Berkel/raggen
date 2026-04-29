@@ -2,6 +2,10 @@ from __future__ import annotations
 
 import pathlib
 from raggen.core.config.project import ProjectConfig
+from raggen.core.embeddings.capabilities import ModelInspector
+from raggen.core.embeddings.model_specs_cache import ModelSpecsCache
+from raggen.core.validation.project_validator import ProjectValidator
+from raggen.core.runtime import get_engine as _get_engine
 from raggen.core.metadata.compare import changed_foundation_fields
 from raggen.core.metadata.models import ProjectLifecycleState
 from raggen.core.metadata.store import (
@@ -51,6 +55,23 @@ def do_build(
             "details": {},
         }
         return result
+
+    # Resolve model capabilities: cache hit → no model load; miss → introspect + cache.
+    # Must happen before snapshot_foundational_config so that the resolved dim is used.
+    _specs_dir = root_p / ".rag" / "metadata" / "model_specs"
+    _cache = ModelSpecsCache(_specs_dir)
+    caps = _cache.get(cfg.embedding.model_id)
+    if caps is None:
+        caps = ModelInspector.introspect(
+            cfg.embedding.model_id, cfg.embedding.model_cache_dir
+        )
+        _cache.put(caps)
+
+    # Unified build-time validation (Steps 3 + 5).
+    # validate_for_build validates the dim, resolves it on cfg, then checks the
+    # stored schema for BREAKING changes.  Dim is a concrete integer after this.
+    _engine = _get_engine()
+    ProjectValidator.validate_for_build(cfg, caps, _engine, destructive=destructive)
 
     current_foundation = snapshot_foundational_config(cfg)
 

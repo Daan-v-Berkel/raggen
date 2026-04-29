@@ -1,10 +1,11 @@
 from __future__ import annotations
 
+import hashlib
 import json
 from datetime import datetime, timezone
 from pathlib import Path
 
-from raggen.core.config.project import ProjectConfig
+from raggen.core.config.project import GroupChunkingConfig, ProjectConfig
 from raggen.core.metadata.models import (
     FoundationalConfigSnapshot,
     ProjectState,
@@ -20,7 +21,33 @@ def project_state_path(project_root: str | Path) -> Path:
     return metadata_dir(project_root) / "project_state.json"
 
 
+def compute_chunking_hash(group_conf: GroupChunkingConfig) -> str:
+    """Return a deterministic SHA-256 hex digest of the boundary-affecting fields.
+
+    Serialisation is ``json.dumps(..., sort_keys=True)`` so the result is
+    stable across Python runs and independent of dict-insertion order.
+
+    Fields included: strategy, chunk_size, overlap, unit.
+    Fields excluded: none of the current fields are excluded — all four affect
+    the set of chunks produced for a given document.
+    """
+    payload = json.dumps(
+        {
+            "strategy": group_conf.strategy,
+            "chunk_size": group_conf.chunk_size,
+            "overlap": group_conf.overlap,
+            "unit": group_conf.unit,
+        },
+        sort_keys=True,
+    )
+    return hashlib.sha256(payload.encode()).hexdigest()
+
+
 def snapshot_foundational_config(cfg: ProjectConfig) -> FoundationalConfigSnapshot:
+    chunking_hashes = {
+        group: compute_chunking_hash(group_conf)
+        for group, group_conf in cfg.chunking.items()
+    }
     return FoundationalConfigSnapshot(
         project_root=str(Path(cfg.project_root).resolve()),
         schema_version=cfg.schema_version,
@@ -31,6 +58,7 @@ def snapshot_foundational_config(cfg: ProjectConfig) -> FoundationalConfigSnapsh
         vector_backend_import=resolve_vector_backend_import(
             cfg.storage.backend_key, cfg.storage.vector_backend_import
         ),
+        chunking_hashes=chunking_hashes,
     )
 
 

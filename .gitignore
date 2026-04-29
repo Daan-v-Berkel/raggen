@@ -74,3 +74,4 @@ __pycache__/
 docs/
 todo.txt
 .claude/
+PLAN_validation.md

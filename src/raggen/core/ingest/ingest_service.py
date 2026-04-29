@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 from raggen.core.config.project import ProjectConfig
-from raggen.core.config.project import ConfigError
+from raggen.core.embeddings.model_specs_cache import ModelSpecsCache, MissingModelSpecsError
 from raggen.core.ingest.logging import log_stage, log_error, logger
 from raggen.core.ingest.gating import (
     should_ingest_raw_bytes,
@@ -23,6 +23,8 @@ from raggen.core.store.metadata_store import fetch_all_document_ids
 from raggen.core.scanner import scan_files
 from raggen.core.runtime import get_engine
 from raggen.core.results.envelope import ResultEnvelope, ResultMessage, init_result
+from raggen.core.metadata.store import load_project_state
+from raggen.core.validation.project_validator import ProjectValidator
 from datetime import datetime
 import json
 from raggen.core.runs.store import get_run_store
@@ -32,12 +34,36 @@ from raggen.core.runs.decorators import persist_result
 @persist_result(get_run_store)
 def do_ingest(destructive: bool = False) -> ResultEnvelope:
     cfg = ProjectConfig.get_config()
+
+    # Resolve model capabilities from the cache written by `rag build`.
+    # This fires before any model load so the error surfaces immediately.
+    _specs_dir = cfg.project_root / ".rag" / "metadata" / "model_specs"
+    _cache = ModelSpecsCache(_specs_dir)
+    caps = _cache.get(cfg.embedding.model_id)
+    if caps is None:
+        raise MissingModelSpecsError(cfg.embedding.model_id)
+
+    # Resolve dim: if not pinned in config, use the cached actual dim.
+    # After this, cfg.embedding.dim is always a concrete integer for downstream code.
+    cfg.embedding.dim = cfg.embedding.dim or caps.actual_dim
+
     engine = get_engine()
     backend = load_vector_backend(
         resolve_vector_backend_import(cfg.storage.backend_key, cfg.storage.vector_backend_import)
     )
 
     ingest_result = init_result("ingest")
+
+    # ---------------------------------------------------------------------------
+    # Unified pre-flight validation (Steps 3, 5, 6).
+    # All errors are raised before any file is touched; advisory warnings are
+    # returned and added to the result envelope.
+    # ---------------------------------------------------------------------------
+    _project_state = load_project_state(cfg.project_root)
+    _validation_warnings = ProjectValidator.validate_for_ingest(
+        cfg, engine, _project_state, caps
+    )
+    ingest_result.warnings.extend(_validation_warnings)
 
     # total files scanned includes skipped empty files
     registry = ParserRegistry(fallback_parser=PlainTextFallbackParser())
@@ -63,45 +89,6 @@ def do_ingest(destructive: bool = False) -> ResultEnvelope:
         ignore_filenames=cfg.scan.ignore_files,
         ignore_patterns=cfg.scan.ignore,
     )
-
-    # ---------------------------------------------------------------------------
-    # Validate chunk sizes against the model's maximum sequence length.
-    #
-    # unit = "tokens": we know the exact token count — hard error if it exceeds
-    #   the model limit (minus 2 for the CLS/SEP special tokens the model always
-    #   adds internally).
-    #
-    # unit = "chars": we can't know exactly without tokenising real content, but
-    #   we can estimate using a conservative 3 chars/token floor.  Emit an
-    #   advisory warning — clearly labelled as an estimate — so the user can
-    #   tighten the config before committing to a long ingest.
-    # ---------------------------------------------------------------------------
-    _max_seq = embedder.max_seq_length
-    _usable_tokens = _max_seq - 2  # reserve CLS + SEP
-    _CHARS_PER_TOKEN_FLOOR = 3     # conservative estimate (code / CJK worst-case)
-
-    for group, group_conf in cfg.chunking.items():
-        if group_conf.unit == "tokens":
-            if group_conf.chunk_size > _usable_tokens:
-                raise ConfigError(
-                    f"Chunking group '{group}': chunk_size={group_conf.chunk_size} tokens "
-                    f"exceeds the model's usable capacity "
-                    f"({_max_seq} max − 2 special tokens = {_usable_tokens}). "
-                    f"Reduce chunk_size to {_usable_tokens} or below."
-                )
-        elif group_conf.unit == "chars":
-            estimated_max_tokens = group_conf.chunk_size // _CHARS_PER_TOKEN_FLOOR
-            if estimated_max_tokens > _usable_tokens:
-                m = (
-                    f"Chunking group '{group}': chunk_size={group_conf.chunk_size} chars "
-                    f"may produce chunks up to ~{estimated_max_tokens} tokens "
-                    f"(estimated at {_CHARS_PER_TOKEN_FLOOR} chars/token — actual varies by content). "
-                    f"The model supports {_usable_tokens} content tokens. "
-                    f"Chunks that exceed this will be silently truncated during embedding. "
-                    f"Consider reducing chunk_size or switching to unit='tokens'."
-                )
-                logger.warning(m)
-                ingest_result.warnings.append(ResultMessage(code="chunk_size_estimate_warning", message=m))
 
     chunk_registry = ChunkerRegistry()
     # Build the token length function once — cheap after the model is loaded.

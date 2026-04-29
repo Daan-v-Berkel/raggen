@@ -11,6 +11,8 @@ import numpy as np
 import pytest
 
 from raggen.core.config.project import ConfigError, default_project_config, GroupChunkingConfig
+from raggen.core.embeddings.capabilities import ModelCapabilities
+from raggen.core.embeddings.model_specs_cache import ModelSpecsCache
 from raggen.core.ingest import do_ingest
 
 # ---------------------------------------------------------------------------
@@ -31,6 +33,7 @@ def _make_dummy_embedder(max_seq_length: int = _MODEL_MAX):
         def max_seq_length(self):
             return max_seq_length
 
+        @property
         def dim(self):
             return 4
 
@@ -83,6 +86,18 @@ def _bootstrap_project(tmp_path, extra_toml: str = "") -> object:
 
     from raggen.core.store.initializer import init_database
     init_database(bootstrapped)
+
+    # Seed the model specs cache so do_ingest() doesn't raise MissingModelSpecsError.
+    # The dummy embedder uses dim=4 and the configured max_seq_length.
+    specs_dir = tmp_path / ".rag" / "metadata" / "model_specs"
+    ModelSpecsCache(specs_dir).put(
+        ModelCapabilities(
+            model_id=bootstrapped.embedding.model_id,
+            actual_dim=4,
+            max_seq_length=_MODEL_MAX,
+            max_batch_size=None,
+        )
+    )
 
     return bootstrapped
 

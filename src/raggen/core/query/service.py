@@ -6,6 +6,7 @@ from raggen.core.store.metadata_store import MetadataStore
 from raggen.core.runtime import get_engine
 from raggen.core.config.project import ProjectConfig
 from raggen.core.embeddings.embedder import LocalSentenceTransformerEmbedder
+from raggen.core.embeddings.model_specs_cache import ModelSpecsCache, MissingModelSpecsError
 from raggen.core.store.plugin_loader import load_vector_backend, resolve_vector_backend_import
 from raggen.core.results.envelope import ResultEnvelope, ResultMessage, init_result
 from raggen.core.runs.store import get_run_store
@@ -28,6 +29,15 @@ def query(request: QueryRequest) -> ResultEnvelope:
     Returns structured data only. Does not print.
     """
     cfg = ProjectConfig.get_config()
+
+    # Resolve model capabilities from the cache written by `rag build`.
+    # Validates the dim and fires before any model load.
+    _specs_dir = cfg.project_root / ".rag" / "metadata" / "model_specs"
+    _cache = ModelSpecsCache(_specs_dir)
+    caps = _cache.get(cfg.embedding.model_id)
+    if caps is None:
+        raise MissingModelSpecsError(cfg.embedding.model_id)
+
     engine = get_engine()
 
     vector_backend = load_vector_backend(
@@ -37,14 +47,13 @@ def query(request: QueryRequest) -> ResultEnvelope:
     query_result = init_result("query")
 
     query_model_id = _resolve_query_model_id(request, cfg)
-    query_dim = _resolve_query_dim(cfg)
 
     embedder = LocalSentenceTransformerEmbedder(
         model_id=query_model_id,
         cache_dir=cfg.embedding.model_cache_dir,
         normalize=cfg.embedding.normalize,
     )
-    _validate_query_embedder(embedder, expected_dim=query_dim)
+    _validate_query_embedder(embedder, expected_dim=caps.actual_dim)
 
     matrix = embedder.embed_texts([request.text], batch_size=1)
     query_vector = matrix[0].tolist()
@@ -142,13 +151,6 @@ def _resolve_query_model_id(request: QueryRequest, cfg: ProjectConfig) -> str:
         return cfg.query.model_id
 
     return cfg.embedding.model_id
-
-
-def _resolve_query_dim(cfg: ProjectConfig) -> int:
-    """
-    For now, query embedding dim must match stored embedding dim.
-    """
-    return int(cfg.embedding.dim)
 
 
 def _validate_query_embedder(embedder, *, expected_dim: int) -> None:
