@@ -2,9 +2,26 @@ from types import SimpleNamespace
 import numpy as np
 
 from raggen.core.config.project import default_project_config
+from raggen.core.embeddings.capabilities import ModelCapabilities
+from raggen.core.embeddings.model_specs_cache import ModelSpecsCache
 from raggen.core.parsing.parser import ParserService
 from raggen.core.chunking.chunker import ChunkerRegistry
 from raggen.core.ingest import do_ingest
+
+_DUMMY_DIM = 4
+_DUMMY_MAX_SEQ = 512
+
+
+def _seed_model_specs_cache(root, model_id):
+    """Write a fake model spec so do_ingest() doesn't raise MissingModelSpecsError."""
+    caps = ModelCapabilities(
+        model_id=model_id,
+        actual_dim=_DUMMY_DIM,
+        max_seq_length=_DUMMY_MAX_SEQ,
+        max_batch_size=None,
+    )
+    specs_dir = root / ".rag" / "metadata" / "model_specs"
+    ModelSpecsCache(specs_dir).put(caps)
 
 
 def _dummy_embedder_factory(*args, **kwargs):
@@ -12,8 +29,9 @@ def _dummy_embedder_factory(*args, **kwargs):
         def __init__(self, model_id=None):
             self.model_id = model_id
 
+        @property
         def dim(self):
-            return 4
+            return _DUMMY_DIM
 
         def embed_texts(self, texts, batch_size=32, normalize=True):
             return np.zeros((len(texts), 4), dtype=np.float32)
@@ -46,13 +64,14 @@ def test_empty_raw_file_is_skipped(tmp_path, monkeypatch):
         f"vector_backend_import = \"{cfg.storage.vector_backend_import}\"\n"
         f"[embedding]\n"
         f"model_id = \"{cfg.embedding.model_id}\"\n"
-        f"dim = {cfg.embedding.dim}\n"
+        f"dim = {_DUMMY_DIM}\n"
         f"normalize = {str(cfg.embedding.normalize).lower()}\n"
     )
     from raggen.core.bootstrap import bootstrap
     cfg = bootstrap(cfg_file)
     from raggen.core.store.initializer import init_database
     init_database(cfg)
+    _seed_model_specs_cache(root, cfg.embedding.model_id)
 
     # Prevent heavy model loading
     monkeypatch.chdir(root)
@@ -88,13 +107,14 @@ def test_empty_parsed_document_is_skipped(tmp_path, monkeypatch):
         f"vector_backend_import = \"{cfg.storage.vector_backend_import}\"\n"
         f"[embedding]\n"
         f"model_id = \"{cfg.embedding.model_id}\"\n"
-        f"dim = {cfg.embedding.dim}\n"
+        f"dim = {_DUMMY_DIM}\n"
         f"normalize = {str(cfg.embedding.normalize).lower()}\n"
     )
     from raggen.core.bootstrap import bootstrap
     cfg = bootstrap(cfg_file)
     from raggen.core.store.initializer import init_database
     init_database(cfg)
+    _seed_model_specs_cache(root, cfg.embedding.model_id)
 
     # Prevent heavy model loading
     monkeypatch.chdir(root)
@@ -138,13 +158,14 @@ def test_whitespace_only_file_is_skipped(tmp_path, monkeypatch):
         f"vector_backend_import = \"{cfg.storage.vector_backend_import}\"\n"
         f"[embedding]\n"
         f"model_id = \"{cfg.embedding.model_id}\"\n"
-        f"dim = {cfg.embedding.dim}\n"
+        f"dim = {_DUMMY_DIM}\n"
         f"normalize = {str(cfg.embedding.normalize).lower()}\n"
     )
     from raggen.core.bootstrap import bootstrap
     cfg = bootstrap(cfg_file)
     from raggen.core.store.initializer import init_database
     init_database(cfg)
+    _seed_model_specs_cache(root, cfg.embedding.model_id)
     # ensure project root lookup uses tmp_path
     monkeypatch.chdir(root)
 

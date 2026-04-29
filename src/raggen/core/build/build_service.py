@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import pathlib
 from raggen.core.config.project import ProjectConfig
+from raggen.core.embeddings.capabilities import ModelInspector
+from raggen.core.embeddings.model_specs_cache import ModelSpecsCache
 from raggen.core.metadata.compare import changed_foundation_fields
 from raggen.core.metadata.models import ProjectLifecycleState
 from raggen.core.metadata.store import (
@@ -53,6 +55,16 @@ def do_build(
         return result
 
     current_foundation = snapshot_foundational_config(cfg)
+
+    # Resolve model capabilities: cache hit → no model load; miss → introspect + cache.
+    _specs_dir = root_p / ".rag" / "metadata" / "model_specs"
+    _cache = ModelSpecsCache(_specs_dir)
+    caps = _cache.get(cfg.embedding.model_id)
+    if caps is None:
+        caps = ModelInspector.introspect(
+            cfg.embedding.model_id, cfg.embedding.model_cache_dir
+        )
+        _cache.put(caps)
 
     # First-time build after init.
     if state.state == ProjectLifecycleState.INITIALISED:

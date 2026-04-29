@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 from raggen.core.config.project import ProjectConfig
 from raggen.core.config.project import ConfigError
+from raggen.core.embeddings.model_specs_cache import ModelSpecsCache, MissingModelSpecsError
 from raggen.core.ingest.logging import log_stage, log_error, logger
 from raggen.core.ingest.gating import (
     should_ingest_raw_bytes,
@@ -32,6 +33,15 @@ from raggen.core.runs.decorators import persist_result
 @persist_result(get_run_store)
 def do_ingest(destructive: bool = False) -> ResultEnvelope:
     cfg = ProjectConfig.get_config()
+
+    # Resolve model capabilities from the cache written by `rag build`.
+    # This fires before any model load so the error surfaces immediately.
+    _specs_dir = cfg.project_root / ".rag" / "metadata" / "model_specs"
+    _cache = ModelSpecsCache(_specs_dir)
+    caps = _cache.get(cfg.embedding.model_id)
+    if caps is None:
+        raise MissingModelSpecsError(cfg.embedding.model_id)
+
     engine = get_engine()
     backend = load_vector_backend(
         resolve_vector_backend_import(cfg.storage.backend_key, cfg.storage.vector_backend_import)
@@ -39,44 +49,14 @@ def do_ingest(destructive: bool = False) -> ResultEnvelope:
 
     ingest_result = init_result("ingest")
 
-    # total files scanned includes skipped empty files
-    registry = ParserRegistry(fallback_parser=PlainTextFallbackParser())
-    registry.register(MarkdownParser())
-    registry.register(HtmlParser())
-    parser_service = ParserService(registry)
-    embedder = LocalSentenceTransformerEmbedder(
-        cfg.embedding.model_id,
-        cache_dir=cfg.embedding.model_cache_dir,
-        batch_size=cfg.embedding.batch_size,
-        normalize=cfg.embedding.normalize,
-    )
-    doc_count = 0
-    chunk_count = 0
-    emb_count = 0
-    skip_count = 0
-
-    current_files = set()
-    db_files = set(fetch_all_document_ids(engine))
-
-    scanned = scan_files(
-        cfg.project_root,
-        ignore_filenames=cfg.scan.ignore_files,
-        ignore_patterns=cfg.scan.ignore,
-    )
-
     # ---------------------------------------------------------------------------
     # Validate chunk sizes against the model's maximum sequence length.
+    # Uses caps.max_seq_length from the cache — no model load needed for this.
     #
-    # unit = "tokens": we know the exact token count — hard error if it exceeds
-    #   the model limit (minus 2 for the CLS/SEP special tokens the model always
-    #   adds internally).
-    #
-    # unit = "chars": we can't know exactly without tokenising real content, but
-    #   we can estimate using a conservative 3 chars/token floor.  Emit an
-    #   advisory warning — clearly labelled as an estimate — so the user can
-    #   tighten the config before committing to a long ingest.
+    # unit = "tokens": hard error if chunk_size exceeds model capacity.
+    # unit = "chars":  advisory warning using a conservative 3 chars/token estimate.
     # ---------------------------------------------------------------------------
-    _max_seq = embedder.max_seq_length
+    _max_seq = caps.max_seq_length
     _usable_tokens = _max_seq - 2  # reserve CLS + SEP
     _CHARS_PER_TOKEN_FLOOR = 3     # conservative estimate (code / CJK worst-case)
 
@@ -102,6 +82,31 @@ def do_ingest(destructive: bool = False) -> ResultEnvelope:
                 )
                 logger.warning(m)
                 ingest_result.warnings.append(ResultMessage(code="chunk_size_estimate_warning", message=m))
+
+    # total files scanned includes skipped empty files
+    registry = ParserRegistry(fallback_parser=PlainTextFallbackParser())
+    registry.register(MarkdownParser())
+    registry.register(HtmlParser())
+    parser_service = ParserService(registry)
+    embedder = LocalSentenceTransformerEmbedder(
+        cfg.embedding.model_id,
+        cache_dir=cfg.embedding.model_cache_dir,
+        batch_size=cfg.embedding.batch_size,
+        normalize=cfg.embedding.normalize,
+    )
+    doc_count = 0
+    chunk_count = 0
+    emb_count = 0
+    skip_count = 0
+
+    current_files = set()
+    db_files = set(fetch_all_document_ids(engine))
+
+    scanned = scan_files(
+        cfg.project_root,
+        ignore_filenames=cfg.scan.ignore_files,
+        ignore_patterns=cfg.scan.ignore,
+    )
 
     chunk_registry = ChunkerRegistry()
     # Build the token length function once — cheap after the model is loaded.
