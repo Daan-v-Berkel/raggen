@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from pathlib import Path
 from raggen.core.config.project import ProjectConfig
-from raggen.core.config.project import ConfigError
 from raggen.core.embeddings.model_specs_cache import ModelSpecsCache, MissingModelSpecsError
 from raggen.core.ingest.logging import log_stage, log_error, logger
 from raggen.core.ingest.gating import (
@@ -24,7 +23,8 @@ from raggen.core.store.metadata_store import fetch_all_document_ids
 from raggen.core.scanner import scan_files
 from raggen.core.runtime import get_engine
 from raggen.core.results.envelope import ResultEnvelope, ResultMessage, init_result
-from raggen.core.metadata.store import load_project_state, compute_chunking_hash
+from raggen.core.metadata.store import load_project_state
+from raggen.core.validation.project_validator import ProjectValidator
 from datetime import datetime
 import json
 from raggen.core.runs.store import get_run_store
@@ -55,63 +55,15 @@ def do_ingest(destructive: bool = False) -> ResultEnvelope:
     ingest_result = init_result("ingest")
 
     # ---------------------------------------------------------------------------
-    # Chunking drift detection — compare current chunking config against the
-    # hashes stored at the last build.  Advisory only: ingest continues even
-    # when drift is detected.  All warnings are emitted here, before any file
-    # processing begins, so they are never buried in per-file output.
+    # Unified pre-flight validation (Steps 3, 5, 6).
+    # All errors are raised before any file is touched; advisory warnings are
+    # returned and added to the result envelope.
     # ---------------------------------------------------------------------------
     _project_state = load_project_state(cfg.project_root)
-    if _project_state is not None:
-        for _group, _group_conf in cfg.chunking.items():
-            _stored_hash = _project_state.foundation.chunking_hashes.get(_group)
-            if _stored_hash is not None:
-                _current_hash = compute_chunking_hash(_group_conf)
-                if _current_hash != _stored_hash:
-                    _m = (
-                        f"Warning: chunking config for group '{_group}' has changed since last build.\n"
-                        f"\n"
-                        f"Existing indexed chunks for this group may not reflect current settings.\n"
-                        f"To re-index this group: rag ingest --group {_group} --force\n"
-                        f"To rebuild everything:  rag build --destructive"
-                    )
-                    logger.warning(_m)
-                    ingest_result.warnings.append(
-                        ResultMessage(code="chunking_drift", message=_m)
-                    )
-
-    # ---------------------------------------------------------------------------
-    # Validate chunk sizes against the model's maximum sequence length.
-    # Uses caps.max_seq_length from the cache — no model load needed for this.
-    #
-    # unit = "tokens": hard error if chunk_size exceeds model capacity.
-    # unit = "chars":  advisory warning using a conservative 3 chars/token estimate.
-    # ---------------------------------------------------------------------------
-    _max_seq = caps.max_seq_length
-    _usable_tokens = _max_seq - 2  # reserve CLS + SEP
-    _CHARS_PER_TOKEN_FLOOR = 3     # conservative estimate (code / CJK worst-case)
-
-    for group, group_conf in cfg.chunking.items():
-        if group_conf.unit == "tokens":
-            if group_conf.chunk_size > _usable_tokens:
-                raise ConfigError(
-                    f"Chunking group '{group}': chunk_size={group_conf.chunk_size} tokens "
-                    f"exceeds the model's usable capacity "
-                    f"({_max_seq} max − 2 special tokens = {_usable_tokens}). "
-                    f"Reduce chunk_size to {_usable_tokens} or below."
-                )
-        elif group_conf.unit == "chars":
-            estimated_max_tokens = group_conf.chunk_size // _CHARS_PER_TOKEN_FLOOR
-            if estimated_max_tokens > _usable_tokens:
-                m = (
-                    f"Chunking group '{group}': chunk_size={group_conf.chunk_size} chars "
-                    f"may produce chunks up to ~{estimated_max_tokens} tokens "
-                    f"(estimated at {_CHARS_PER_TOKEN_FLOOR} chars/token — actual varies by content). "
-                    f"The model supports {_usable_tokens} content tokens. "
-                    f"Chunks that exceed this will be silently truncated during embedding. "
-                    f"Consider reducing chunk_size or switching to unit='tokens'."
-                )
-                logger.warning(m)
-                ingest_result.warnings.append(ResultMessage(code="chunk_size_estimate_warning", message=m))
+    _validation_warnings = ProjectValidator.validate_for_ingest(
+        cfg, engine, _project_state, caps
+    )
+    ingest_result.warnings.extend(_validation_warnings)
 
     # total files scanned includes skipped empty files
     registry = ParserRegistry(fallback_parser=PlainTextFallbackParser())

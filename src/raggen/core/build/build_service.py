@@ -3,8 +3,9 @@ from __future__ import annotations
 import pathlib
 from raggen.core.config.project import ProjectConfig
 from raggen.core.embeddings.capabilities import ModelInspector
-from raggen.core.embeddings.config_validator import EmbeddingConfigValidator
 from raggen.core.embeddings.model_specs_cache import ModelSpecsCache
+from raggen.core.validation.project_validator import ProjectValidator
+from raggen.core.runtime import get_engine as _get_engine
 from raggen.core.metadata.compare import changed_foundation_fields
 from raggen.core.metadata.models import ProjectLifecycleState
 from raggen.core.metadata.store import (
@@ -66,10 +67,11 @@ def do_build(
         )
         _cache.put(caps)
 
-    # Validate any pinned dim against cached capabilities, then resolve it.
-    # After this point cfg.embedding.dim is always a concrete integer.
-    EmbeddingConfigValidator.validate(cfg.embedding, caps)
-    cfg.embedding.dim = cfg.embedding.dim or caps.actual_dim
+    # Unified build-time validation (Steps 3 + 5).
+    # validate_for_build validates the dim, resolves it on cfg, then checks the
+    # stored schema for BREAKING changes.  Dim is a concrete integer after this.
+    _engine = _get_engine()
+    ProjectValidator.validate_for_build(cfg, caps, _engine, destructive=destructive)
 
     current_foundation = snapshot_foundational_config(cfg)
 
