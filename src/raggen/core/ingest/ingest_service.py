@@ -24,6 +24,7 @@ from raggen.core.store.metadata_store import fetch_all_document_ids
 from raggen.core.scanner import scan_files
 from raggen.core.runtime import get_engine
 from raggen.core.results.envelope import ResultEnvelope, ResultMessage, init_result
+from raggen.core.metadata.store import load_project_state, compute_chunking_hash
 from datetime import datetime
 import json
 from raggen.core.runs.store import get_run_store
@@ -52,6 +53,31 @@ def do_ingest(destructive: bool = False) -> ResultEnvelope:
     )
 
     ingest_result = init_result("ingest")
+
+    # ---------------------------------------------------------------------------
+    # Chunking drift detection — compare current chunking config against the
+    # hashes stored at the last build.  Advisory only: ingest continues even
+    # when drift is detected.  All warnings are emitted here, before any file
+    # processing begins, so they are never buried in per-file output.
+    # ---------------------------------------------------------------------------
+    _project_state = load_project_state(cfg.project_root)
+    if _project_state is not None:
+        for _group, _group_conf in cfg.chunking.items():
+            _stored_hash = _project_state.foundation.chunking_hashes.get(_group)
+            if _stored_hash is not None:
+                _current_hash = compute_chunking_hash(_group_conf)
+                if _current_hash != _stored_hash:
+                    _m = (
+                        f"Warning: chunking config for group '{_group}' has changed since last build.\n"
+                        f"\n"
+                        f"Existing indexed chunks for this group may not reflect current settings.\n"
+                        f"To re-index this group: rag ingest --group {_group} --force\n"
+                        f"To rebuild everything:  rag build --destructive"
+                    )
+                    logger.warning(_m)
+                    ingest_result.warnings.append(
+                        ResultMessage(code="chunking_drift", message=_m)
+                    )
 
     # ---------------------------------------------------------------------------
     # Validate chunk sizes against the model's maximum sequence length.

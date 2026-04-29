@@ -24,6 +24,11 @@ class FoundationalConfigSnapshot(BaseModel):
     database_url: str
     vector_backend_import: str
 
+    # SHA-256 hashes of boundary-affecting chunking fields, keyed by group name.
+    # Empty dict for projects built before this feature was introduced — those
+    # produce no drift warnings at ingest time.
+    chunking_hashes: dict[str, str] = {}
+
 
 class ProjectState(BaseModel):
     state: ProjectLifecycleState
