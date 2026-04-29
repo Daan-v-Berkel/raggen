@@ -1,8 +1,26 @@
 from __future__ import annotations
 
 import argparse
+import sys
 
 from raggen.core.results.formats import OutputFormat
+
+# ---------------------------------------------------------------------------
+# User-facing errors: printed cleanly to stderr with no traceback.
+# All of these carry a self-contained, actionable message written for the end
+# user — a stack trace would bury that message and cause unnecessary panic.
+# ---------------------------------------------------------------------------
+from raggen.core.embeddings.config_validator import ModelCapabilityError
+from raggen.core.embeddings.model_specs_cache import MissingModelSpecsError
+from raggen.core.store.exceptions import SchemaMismatchError
+from raggen.core.config.project import ConfigError
+
+_USER_ERRORS = (
+    ModelCapabilityError,
+    MissingModelSpecsError,
+    SchemaMismatchError,
+    ConfigError,
+)
 
 
 def build_common_parser() -> argparse.ArgumentParser:
@@ -196,13 +214,21 @@ def main(argv=None):
     parser = build_parser()
     args = parser.parse_args(argv)
 
+    try:
+        return _dispatch(args, parser)
+    except _USER_ERRORS as exc:
+        print(str(exc), file=sys.stderr)
+        return 1
+
+
+def _dispatch(args, parser):
     if args.command == "init":
         from raggen.cli.commands import init as init_cmd
         return init_cmd.run_init(
             root=args.root,
             force=args.force,
             detailed=args.detailed,
-            format_as=args.format
+            format_as=args.format,
         )
 
     if args.command == "build":
@@ -211,7 +237,7 @@ def main(argv=None):
             config=args.config,
             destructive=args.destructive,
             detailed=args.detailed,
-            format_as=args.format
+            format_as=args.format,
         )
 
     if args.command == "ingest":
@@ -220,7 +246,7 @@ def main(argv=None):
             config_path=args.config,
             destructive=args.destructive,
             detailed=args.detailed,
-            format_as=args.format
+            format_as=args.format,
         )
 
     if args.command == "query":
@@ -230,21 +256,28 @@ def main(argv=None):
             config_path=args.config,
             top_k=args.top_k,
             detailed=args.detailed,
-            format_as=args.format
+            format_as=args.format,
         )
 
     if args.command == "runs":
         from raggen.cli.commands import runs as runs_cmd
         if args.runs_command == "list":
-            return runs_cmd.run_list(config_path=args.config,
-                                     limit=args.limit, operation=args.operation,
-                                     detailed=args.detailed,
-                                     format_as=args.format
-                                     )
-
-        elif args.runs_command == "show":
-            return runs_cmd.run_show(config_path=args.config, run_id=args.run_id, latest=args.latest,
-                                     operation=args.operation, detailed=args.detailed, format_as=args.format)
+            return runs_cmd.run_list(
+                config_path=args.config,
+                limit=args.limit,
+                operation=args.operation,
+                detailed=args.detailed,
+                format_as=args.format,
+            )
+        if args.runs_command == "show":
+            return runs_cmd.run_show(
+                config_path=args.config,
+                run_id=args.run_id,
+                latest=args.latest,
+                operation=args.operation,
+                detailed=args.detailed,
+                format_as=args.format,
+            )
 
     parser.print_help()
     return 1
