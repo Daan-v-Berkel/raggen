@@ -1,16 +1,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from pathlib import Path
 from typing import List, Sequence
 import numpy as np
 
-try:
-    from sentence_transformers import SentenceTransformer
-except ImportError as e:
-    raise ImportError(
-        "Missing dependency. Install with: pip install sentence-transformers"
-    ) from e
+from raggen.core.embeddings.capabilities import _load_sentence_transformer
 
 
 @dataclass(frozen=True)
@@ -19,30 +13,18 @@ class EmbeddingResult:
     vector: np.ndarray  # shape: (dim,)
 
 
-def _resolve_cache_dir(cache_dir: str | None) -> Path | None:
-    if not cache_dir:
-        return None
-    p = Path(cache_dir)
-    return p.expanduser().resolve() if not p.is_absolute() else p
-
-
-def _local_model_path(cache_dir: Path, model_id: str) -> Path:
-    """Returns the expected on-disk path for a manually-placed model inside cache_dir."""
-    return cache_dir / model_id
-
-
-def _is_valid_local_model(path: Path) -> bool:
-    return (path / "config.json").exists()
-
-
-
 class LocalSentenceTransformerEmbedder:
     """
     Minimal CPU embedder using sentence-transformers.
 
+    Model loading is deferred to the first instantiation (lazy import) via the
+    shared ``_load_sentence_transformer`` helper in ``capabilities.py``.  That
+    helper also handles local-cache lookup, HuggingFace download + save, and
+    verbosity suppression — nothing is duplicated here.
+
     Determinism notes:
-    - Embeddings should be stable for a given model version + text.
-    - If you change model_id, dimension may change, so store model_id with vectors.
+    - Embeddings are stable for a given model version + text.
+    - If you change model_id, dimension may change — store model_id with vectors.
     """
 
     def __init__(
@@ -55,20 +37,7 @@ class LocalSentenceTransformerEmbedder:
         self.model_id = model_id
         self.batch_size = batch_size
         self.normalize = normalize
-        resolved = _resolve_cache_dir(cache_dir)
-
-        if resolved is not None:
-            local_path = _local_model_path(resolved, model_id)
-            if _is_valid_local_model(local_path):
-                self._model = SentenceTransformer(
-                    str(local_path), device="cpu", local_files_only=True
-                )
-            else:
-                self._model = SentenceTransformer(model_id, device="cpu")
-                local_path.mkdir(parents=True, exist_ok=True)
-                self._model.save(str(local_path))
-        else:
-            self._model = SentenceTransformer(model_id, device="cpu")
+        self._model = _load_sentence_transformer(model_id, cache_dir)
 
     @property
     def dim(self) -> int:
@@ -82,10 +51,8 @@ class LocalSentenceTransformerEmbedder:
     def get_length_function(self):
         """Return a callable (str) -> int that counts tokens using this model's tokenizer.
 
-        The tokenizer is already downloaded as part of the model — no extra
-        network calls or dependencies are needed.  Special tokens (CLS, SEP)
-        are excluded from the count so that ``chunk_size`` in the config maps
-        directly to content tokens, not the model's internal overhead.
+        Special tokens (CLS, SEP) are excluded so that ``chunk_size`` in the
+        config maps directly to content tokens, not the model's internal overhead.
         """
         tokenizer = self._model.tokenizer
 
@@ -117,7 +84,7 @@ def embed_chunks(
     """
     Embed a sequence of chunks.
 
-    `chunks` must have:
+    ``chunks`` must have:
       - chunk.chunk_id (str)
       - chunk.text (str)
     """
