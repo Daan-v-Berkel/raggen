@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from fancy_dataclass import ConfigDataclass, TOMLDataclass
 from pathlib import Path
-from typing import List
+from typing import List, Optional
 import json
 
 
@@ -69,7 +69,7 @@ def _default_chunking():
 class EmbeddingConfig(TOMLDataclass):
     model_id: str = "sentence-transformers/all-MiniLM-L6-v2"
     model_cache_dir: str = ".rag/models/"
-    dim: int = 384
+    dim: Optional[int] = None
     normalize: bool = True
     batch_size: int = 32
 

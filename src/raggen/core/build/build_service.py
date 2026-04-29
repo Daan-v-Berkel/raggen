@@ -3,6 +3,7 @@ from __future__ import annotations
 import pathlib
 from raggen.core.config.project import ProjectConfig
 from raggen.core.embeddings.capabilities import ModelInspector
+from raggen.core.embeddings.config_validator import EmbeddingConfigValidator
 from raggen.core.embeddings.model_specs_cache import ModelSpecsCache
 from raggen.core.metadata.compare import changed_foundation_fields
 from raggen.core.metadata.models import ProjectLifecycleState
@@ -54,9 +55,8 @@ def do_build(
         }
         return result
 
-    current_foundation = snapshot_foundational_config(cfg)
-
     # Resolve model capabilities: cache hit → no model load; miss → introspect + cache.
+    # Must happen before snapshot_foundational_config so that the resolved dim is used.
     _specs_dir = root_p / ".rag" / "metadata" / "model_specs"
     _cache = ModelSpecsCache(_specs_dir)
     caps = _cache.get(cfg.embedding.model_id)
@@ -65,6 +65,13 @@ def do_build(
             cfg.embedding.model_id, cfg.embedding.model_cache_dir
         )
         _cache.put(caps)
+
+    # Validate any pinned dim against cached capabilities, then resolve it.
+    # After this point cfg.embedding.dim is always a concrete integer.
+    EmbeddingConfigValidator.validate(cfg.embedding, caps)
+    cfg.embedding.dim = cfg.embedding.dim or caps.actual_dim
+
+    current_foundation = snapshot_foundational_config(cfg)
 
     # First-time build after init.
     if state.state == ProjectLifecycleState.INITIALISED:

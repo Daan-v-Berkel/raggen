@@ -42,6 +42,10 @@ def do_ingest(destructive: bool = False) -> ResultEnvelope:
     if caps is None:
         raise MissingModelSpecsError(cfg.embedding.model_id)
 
+    # Resolve dim: if not pinned in config, use the cached actual dim.
+    # After this, cfg.embedding.dim is always a concrete integer for downstream code.
+    cfg.embedding.dim = cfg.embedding.dim or caps.actual_dim
+
     engine = get_engine()
     backend = load_vector_backend(
         resolve_vector_backend_import(cfg.storage.backend_key, cfg.storage.vector_backend_import)
