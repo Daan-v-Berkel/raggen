@@ -39,9 +39,9 @@ def build_parser() -> argparse.ArgumentParser:
     common_parser = build_common_parser()
 
     parser = argparse.ArgumentParser(
-        prog="raggen",
+        prog="rag",
         description=(
-            "Raggen is a local RAG indexing and querying tool.\n"
+            "raggen — local RAG indexing and querying tool.\n"
             "Use one of the subcommands below to initialize a project, ingest files, "
             "or query the indexed content."
         ),
@@ -52,7 +52,7 @@ def build_parser() -> argparse.ArgumentParser:
         dest="command",
         title="commands",
         metavar="<command>",
-        help="Run 'raggen <command> -h' for command-specific help.",
+        help="Run 'rag <command> -h' for command-specific help.",
     )
 
     # init
@@ -62,7 +62,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="Initialise project scaffold and default configuration",
     )
     init_p.add_argument("root", type=str)
-    init_p.add_argument("--force", action="store_true")
+    init_p.add_argument(
+        "--force",
+        action="store_true",
+        help="Overwrite an existing project scaffold. WARNING: deletes the entire .rag directory.",
+    )
 
     # build
     build_p = sub.add_parser(
@@ -102,8 +106,8 @@ def build_parser() -> argparse.ArgumentParser:
         "--force",
         action="store_true",
         help=(
-            "Force ingestion of files already ingested before"
-            "Usefull for non-breaking configuration changes that invalidate the ingested files"
+            "Re-ingest all files, even those that have not changed. "
+            "Useful after chunking or embedding config changes."
         ),
     )
     ingest_p.add_argument(
@@ -147,6 +151,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     # runs
     runs_p = sub.add_parser("runs", help="Inspect stored run history")
+    runs_p.set_defaults(_runs_parser=runs_p)
     runs_sub = runs_p.add_subparsers(dest="runs_command")
 
     runs_list_p = runs_sub.add_parser(
@@ -279,6 +284,9 @@ def _dispatch(args, parser):
                 detailed=args.detailed,
                 format_as=args.format,
             )
+        # `rag runs` with no subcommand — show runs-specific help
+        args._runs_parser.print_help()
+        return 1
 
     parser.print_help()
     return 1

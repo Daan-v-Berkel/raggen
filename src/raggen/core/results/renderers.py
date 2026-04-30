@@ -133,6 +133,7 @@ class TextRenderer(Renderer):
             lines.append(f"  Config:  {d['config_path']}")
         if d.get("state"):
             lines.append(f"  State:   {d['state']}")
+        lines.append("Next: run 'rag build' to set up project storage.")
         return lines
 
     def _render_build(self, result: ResultEnvelope) -> list[str]:
@@ -148,6 +149,7 @@ class TextRenderer(Renderer):
         changed = d.get("changed_foundation_fields", [])
         if changed:
             lines.append(f"  Changed: {', '.join(changed)}")
+        lines.append("Next: run 'rag ingest' to index your files.")
         return lines
 
     def _render_fallback(self, result: ResultEnvelope) -> list[str]:
