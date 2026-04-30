@@ -122,7 +122,8 @@ class ProjectValidator:
                             f"\n"
                             f"Existing indexed chunks for this group may not "
                             f"reflect current settings.\n"
-                            f"run 'rag ingest --force to force ingesting all files\n"
+                            f"Run 'rag ingest --force' to re-index all files "
+                            f"with the current settings."
                         )
                         logger.warning(m)
                         warnings.append(

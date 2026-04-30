@@ -6,7 +6,7 @@ from raggen.core.embeddings.capabilities import ModelInspector
 from raggen.core.embeddings.model_specs_cache import ModelSpecsCache
 from raggen.core.validation.project_validator import ProjectValidator
 from raggen.core.runtime import get_engine as _get_engine
-from raggen.core.metadata.compare import changed_foundation_fields
+from raggen.core.metadata.compare import changed_foundation_fields, classify_foundation_changes
 from raggen.core.metadata.models import ProjectLifecycleState
 from raggen.core.metadata.store import (
     create_project_state,
@@ -110,7 +110,9 @@ def do_build(
             current=current_foundation,
             recorded=state.foundation,
         )
+        breaking_fields, stale_fields = classify_foundation_changes(changed_fields)
 
+        # ── Case 1: nothing changed ──────────────────────────────────────────
         if not changed_fields:
             result.warnings.append(
                 ResultMessage(
@@ -140,14 +142,55 @@ def do_build(
             result.success = True
             return result
 
+        # ── Case 2: only STALE fields changed (e.g. chunking config) ────────
+        # The DB schema is unaffected — just update the snapshot so the new
+        # config is recorded, and advise the user to re-ingest.
+        if not breaking_fields:
+            new_state = create_project_state(
+                cfg=cfg,
+                state=ProjectLifecycleState.SET_UP,
+            )
+            save_project_state(new_state)
+
+            result.warnings.append(
+                ResultMessage(
+                    code="STALE_CONFIG_UPDATED",
+                    message=(
+                        f"Non-breaking config changed ({', '.join(stale_fields)}). "
+                        "Project snapshot updated. "
+                        "Run 'rag ingest --force' to re-index files with the new settings."
+                    ),
+                )
+            )
+            result.data = {
+                "summary": {
+                    "project_root": str(root_p),
+                    "config_path": str(cfg_path),
+                    "state_before": ProjectLifecycleState.SET_UP.value,
+                    "state_after": ProjectLifecycleState.SET_UP.value,
+                    "destructive": False,
+                    "changed_foundation_fields": stale_fields,
+                    "database_initialized": True,
+                    "no_op": False,
+                },
+                "details": {
+                    "project_state_path": str(state_path),
+                    "recorded_foundation": state.foundation.model_dump(mode="json"),
+                    "current_foundation": current_foundation.model_dump(mode="json"),
+                },
+            }
+            result.success = True
+            return result
+
+        # ── Case 3: BREAKING fields changed — DB rebuild required ────────────
         if not destructive:
             result.errors.append(
                 ResultMessage(
                     code="FOUNDATIONAL_CONFIG_CHANGED",
                     message=(
                         "Foundational configuration has changed since the last build. "
-                        f"Changed fields: {', '.join(changed_fields)}. "
-                        "Re-run with destructive rebuild enabled to recreate storage "
+                        f"Changed fields: {', '.join(breaking_fields)}. "
+                        "Re-run with --destructive to recreate storage "
                         "using the new configuration."
                     ),
                 )
@@ -159,7 +202,7 @@ def do_build(
                     "state_before": ProjectLifecycleState.SET_UP.value,
                     "state_after": ProjectLifecycleState.SET_UP.value,
                     "destructive": destructive,
-                    "changed_foundation_fields": changed_fields,
+                    "changed_foundation_fields": breaking_fields,
                     "database_initialized": True,
                     "no_op": True,
                 },
@@ -176,7 +219,7 @@ def do_build(
                 code="DESTRUCTIVE_REBUILD",
                 message=(
                     "Foundational configuration changed. Performing destructive rebuild "
-                    f"for fields: {', '.join(changed_fields)}."
+                    f"for fields: {', '.join(breaking_fields)}."
                 ),
             )
         )
@@ -196,7 +239,7 @@ def do_build(
                 "state_before": ProjectLifecycleState.SET_UP.value,
                 "state_after": ProjectLifecycleState.SET_UP.value,
                 "destructive": destructive,
-                "changed_foundation_fields": changed_fields,
+                "changed_foundation_fields": breaking_fields,
                 "database_initialized": True,
                 "no_op": False,
             },
