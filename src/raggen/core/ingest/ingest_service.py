@@ -33,7 +33,7 @@ from raggen.core.runs.decorators import persist_result
 
 @persist_result(get_run_store)
 def do_ingest(
-    destructive: bool = False,
+    force: bool = False,
     on_file: Optional[Callable[[], None]] = None,
 ) -> ResultEnvelope:
     cfg = ProjectConfig.get_config()
@@ -52,7 +52,8 @@ def do_ingest(
 
     engine = get_engine()
     backend = load_vector_backend(
-        resolve_vector_backend_import(cfg.storage.backend_key, cfg.storage.vector_backend_import)
+        resolve_vector_backend_import(
+            cfg.storage.backend_key, cfg.storage.vector_backend_import)
     )
 
     ingest_result = init_result("ingest")
@@ -103,7 +104,8 @@ def do_ingest(
             continue
 
         group_conf = cfg.chunking.get(group)
-        length_fn = _token_length_fn if (group_conf and group_conf.unit == "tokens") else len
+        length_fn = _token_length_fn if (
+            group_conf and group_conf.unit == "tokens") else len
         chunker = chunk_registry.get(group, length_function=length_fn)
 
         for fr in file_refs:
@@ -111,11 +113,10 @@ def do_ingest(
                 on_file()
             current_files.add(fr.relative_path)
             # gating: raw bytes
-            if not should_ingest_changed_file(fr, cfg):
-                # Unchanged files are normal — count them but don't add noise
-                # to the warnings list. The total is reported in docs_skipped.
-                skip_count += 1
-                continue
+            if not force:
+                if not should_ingest_changed_file(fr, cfg):
+                    skip_count += 1
+                    continue
             try:
                 data = Path(fr.path).read_bytes()
             except Exception:
@@ -145,7 +146,8 @@ def do_ingest(
                     m = (
                         f"Skipping {fr.relative_path}: "
                         f"{result.encoding_error_ratio:.1%} of content is invalid UTF-8 "
-                        f"(threshold: {cfg.scan.max_encoding_error_ratio:.1%}). "
+                        f"(threshold: {
+                            cfg.scan.max_encoding_error_ratio:.1%}). "
                         "File is likely binary or severely corrupted."
                     )
                     ingest_result.warnings.append(

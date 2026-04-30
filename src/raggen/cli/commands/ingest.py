@@ -11,7 +11,7 @@ from raggen.core.results.projection import project_result
 
 def run_ingest(
     *, config_path: str = ".rag/config.toml",
-    destructive: bool = False,
+    force: bool = False,
     format_as: OutputFormat = OutputFormat.JSON,
     detailed: bool = False,
     no_progress: bool = False,
@@ -49,7 +49,7 @@ def run_ingest(
 
         def _ingest_thread() -> None:
             try:
-                result_holder[0] = do_ingest(destructive=destructive, on_file=on_file)
+                result_holder[0] = do_ingest(force=force, on_file=on_file)
             except Exception as e:
                 exc_holder[0] = e
             finally:
@@ -74,7 +74,7 @@ def run_ingest(
 
     else:
         from raggen.core.ingest.ingest_service import do_ingest
-        result = do_ingest(destructive=destructive)
+        result = do_ingest(force=force)
 
     projected = project_result(result, detailed=detailed)
     renderer = get_renderer(format_as)

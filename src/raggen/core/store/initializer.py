@@ -27,7 +27,7 @@ _COMPARE_FIELDS: list[tuple[str, str]] = [
     ("schema_version",    "schema_version"),
     ("backend_key",       "storage.backend_key"),
     ("database_url",      "storage.database_url"),
-    ("embedding_model_id","embedding.model_id"),
+    ("embedding_model_id", "embedding.model_id"),
     ("embedding_dim",     "embedding.dim"),
     ("embedding_normalized", "embedding.normalize"),
     ("query_model_id",    "query.model_id"),
@@ -53,13 +53,7 @@ def _collect_changes(stored, cfg: ProjectConfig) -> list[FieldChange]:
 
 
 def validate_existing_project(engine: Engine, cfg: ProjectConfig) -> None:
-    with engine.connect() as conn:
-        sel = select(rag_project).where(rag_project.c.id == 1)
-        try:
-            res = conn.execute(sel).mappings().fetchone()
-        except Exception:
-            # Table may not exist yet; treat as no stored project.
-            res = None
+    res = _fetch_project_row(engine)
     if not res:
         return
 

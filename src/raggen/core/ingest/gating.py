@@ -42,19 +42,18 @@ def should_ingest_parsed_document(doc) -> Tuple[bool, Optional[str]]:
 def should_ingest_changed_file(fr: FileRef, cfg: ProjectConfig) -> bool:
     """Decide if the fileRef sould be processed further.
 
-    Checks for duplicate in database (already ingested) by mtime & byte size.
+    Checks for duplicate in database (already ingested) by content_hash
     """
     engine = get_engine()
     with engine.connect() as conn:
-        sel = select(documents.c.doc_id, documents.c.byte_size, documents.c.mtime_ns).where(
+        sel = select(documents.c.doc_id, documents.c.content_hash).where(
             documents.c.doc_id == fr.relative_path
         )
         res = conn.execute(sel).fetchone()
 
-    if not res:
-        # new file
-        return True
-    if res.byte_size == fr.file_size and res.mtime_ns == fr.mtime:
-        # unchanged file
-        return False
+    if res:
+        if res.content_hash == fr.content_hash:
+            # unchanged file
+            return False
+
     return True

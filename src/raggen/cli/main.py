@@ -4,12 +4,6 @@ import argparse
 import sys
 
 from raggen.core.results.formats import OutputFormat
-
-# ---------------------------------------------------------------------------
-# User-facing errors: printed cleanly to stderr with no traceback.
-# All of these carry a self-contained, actionable message written for the end
-# user — a stack trace would bury that message and cause unnecessary panic.
-# ---------------------------------------------------------------------------
 from raggen.core.embeddings.config_validator import ModelCapabilityError
 from raggen.core.embeddings.model_specs_cache import MissingModelSpecsError
 from raggen.core.store.exceptions import SchemaMismatchError
@@ -105,11 +99,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="Path to the project configuration TOML file.",
     )
     ingest_p.add_argument(
-        "--destructive",
+        "--force",
         action="store_true",
         help=(
-            "Rebuild database state destructively before ingesting. "
-            "Use with care, as this WILL remove existing indexed data."
+            "Force ingestion of files already ingested before"
+            "Usefull for non-breaking configuration changes that invalidate the ingested files"
         ),
     )
     ingest_p.add_argument(
@@ -250,7 +244,7 @@ def _dispatch(args, parser):
         from raggen.cli.commands import ingest as ingest_cmd
         return ingest_cmd.run_ingest(
             config_path=args.config,
-            destructive=args.destructive,
+            force=args.force,
             detailed=args.detailed,
             format_as=args.format,
             no_progress=args.no_progress,
