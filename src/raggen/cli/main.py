@@ -198,7 +198,7 @@ def build_parser() -> argparse.ArgumentParser:
     runs_show_p.add_argument(
         "--latest",
         action="store_true",
-        help="Show the latest run, optionally filtered by --action.",
+        help="Show the latest run, optionally filtered by --operation.",
     )
     runs_show_p.add_argument(
         "--operation",

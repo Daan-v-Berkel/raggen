@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from datetime import datetime
 from raggen.core.results.renderers import get_renderer
 from raggen.core.results.projection import project_result
 from raggen.core.runs.store import get_run_store
@@ -31,7 +32,7 @@ def run_list(
         print(
             f"{run.run_id:<40} "
             f"{run.operation:<12} "
-            f"{run.created_at:<28} "
+            f"{_parse_timestamp(run.created_at):<28} "
             f"{str(run.success):<6} "
             f"{run.n_warnings:<6} "
             f"{run.n_errors:<6}"
@@ -63,16 +64,33 @@ def run_show(
                 print(f"No runs found for operation '{operation}'.")
             else:
                 print("No runs found.")
+            print("Use 'rag runs list' to see available runs.")
             return 1
         run_id = latest.run_id
 
     if not run_id:
         print("Provide a run_id or use --latest.")
+        print("Use 'rag runs list' to see available runs.")
         return 1
 
     result = store.load_result(run_id)
     projected = project_result(result, detailed=detailed)
     renderer = get_renderer(format_as)
 
+    # Prepend a clear header
+    header = f"─── {result.operation} ─ {
+        _parse_timestamp(result.created_at)} ─ [{result.run_id}] ───"
+    print(header)
+    print(f"    Status: {'Success' if result.success else 'Failed'}")
+    print(" output ".center(len(header), "─"))
+
     print(renderer.render(projected))
     return 0
+
+
+def _parse_timestamp(ts: str) -> str:
+    if not ts:
+        return ""
+    dt = datetime.fromisoformat(ts)
+    dt = dt.astimezone()
+    return dt.strftime("%c")

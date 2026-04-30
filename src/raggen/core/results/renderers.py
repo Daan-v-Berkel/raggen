@@ -101,7 +101,8 @@ class TextRenderer(Renderer):
         if not isinstance(data, QueryResponse):
             # summary dict — chunk details not available
             lines = [f'Query: "{data.get("query", "")}"']
-            lines.append(f"  {data.get('matches', 0)} matches  (use --detailed to see results)")
+            lines.append(f"  {data.get('matches', 0)
+                              } matches  (use --detailed to see results)")
             if data.get("answer"):
                 lines.append(f"  Answer: {data['answer']}")
             return lines
@@ -135,12 +136,10 @@ class TextRenderer(Renderer):
         return lines
 
     def _render_build(self, result: ResultEnvelope) -> list[str]:
-        d = result.data or {}
+        d = result.data
         if not result.success:
-            return ["Build failed."]
-
-        if d.get("no_op"):
-            return [f"Nothing to do  (storage already {d.get('state_after', 'built')})"]
+            lines = ["Build failed."]
+            return lines
 
         lines = ["Database initialized"]
         before, after = d.get("state_before", ""), d.get("state_after", "")

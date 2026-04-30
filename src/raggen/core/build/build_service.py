@@ -67,11 +67,11 @@ def do_build(
         )
         _cache.put(caps)
 
-    # Unified build-time validation (Steps 3 + 5).
     # validate_for_build validates the dim, resolves it on cfg, then checks the
     # stored schema for BREAKING changes.  Dim is a concrete integer after this.
     _engine = _get_engine()
-    ProjectValidator.validate_for_build(cfg, caps, _engine, destructive=destructive)
+    ProjectValidator.validate_for_build(
+        cfg, caps, _engine, destructive=destructive)
 
     current_foundation = snapshot_foundational_config(cfg)
 
@@ -94,7 +94,6 @@ def do_build(
                 "destructive": destructive,
                 "changed_foundation_fields": [],
                 "database_initialized": True,
-                "no_op": False,
             },
             "details": {
                 "project_state_path": str(state_path),
@@ -110,11 +109,12 @@ def do_build(
             current=current_foundation,
             recorded=state.foundation,
         )
-        breaking_fields, stale_fields = classify_foundation_changes(changed_fields)
+        breaking_fields, stale_fields = classify_foundation_changes(
+            changed_fields)
 
         # ── Case 1: nothing changed ──────────────────────────────────────────
         if not changed_fields:
-            result.warnings.append(
+            result.errors.append(
                 ResultMessage(
                     code="ALREADY_BUILT",
                     message=(
@@ -132,14 +132,13 @@ def do_build(
                     "destructive": destructive,
                     "changed_foundation_fields": [],
                     "database_initialized": True,
-                    "no_op": True,
                 },
                 "details": {
                     "project_state_path": str(state_path),
                     "foundation": current_foundation.model_dump(mode="json"),
                 },
             }
-            result.success = True
+            result.success = False
             return result
 
         # ── Case 2: only STALE fields changed (e.g. chunking config) ────────
@@ -156,7 +155,8 @@ def do_build(
                 ResultMessage(
                     code="STALE_CONFIG_UPDATED",
                     message=(
-                        f"Non-breaking config changed ({', '.join(stale_fields)}). "
+                        f"Non-breaking config changed ({
+                            ', '.join(stale_fields)}). "
                         "Project snapshot updated. "
                         "Run 'rag ingest --force' to re-index files with the new settings."
                     ),
@@ -204,7 +204,6 @@ def do_build(
                     "destructive": destructive,
                     "changed_foundation_fields": breaking_fields,
                     "database_initialized": True,
-                    "no_op": True,
                 },
                 "details": {
                     "project_state_path": str(state_path),
@@ -212,6 +211,7 @@ def do_build(
                     "current_foundation": current_foundation.model_dump(mode="json"),
                 },
             }
+            result.success = False
             return result
 
         result.warnings.append(
@@ -241,7 +241,6 @@ def do_build(
                 "destructive": destructive,
                 "changed_foundation_fields": breaking_fields,
                 "database_initialized": True,
-                "no_op": False,
             },
             "details": {
                 "project_state_path": str(state_path),
