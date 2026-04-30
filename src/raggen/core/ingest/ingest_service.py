@@ -23,7 +23,8 @@ from raggen.core.store.metadata_store import fetch_all_document_ids
 from raggen.core.scanner import scan_files
 from raggen.core.runtime import get_engine
 from raggen.core.results.envelope import ResultEnvelope, ResultMessage, init_result
-from raggen.core.metadata.store import load_project_state
+from raggen.core.metadata.store import load_project_state, create_project_state, save_project_state
+from raggen.core.metadata.models import ProjectLifecycleState
 from raggen.core.validation.project_validator import ProjectValidator
 from datetime import datetime
 import json
@@ -247,5 +248,11 @@ def do_ingest(
         "summary": result_data,
         "details": result_data,
     }
+
+    # Forced re-ingest with no errors means all files reflect the current config.
+    # Update the project snapshot so chunking drift warnings clear on next run.
+    if force and not ingest_result.errors:
+        new_state = create_project_state(cfg=cfg, state=ProjectLifecycleState.SET_UP)
+        save_project_state(new_state)
 
     return ingest_result
