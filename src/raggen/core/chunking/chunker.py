@@ -9,11 +9,8 @@ from raggen.core.parsing.parser import Document
 from typing import List, Callable, Optional
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from langchain_text_splitters import (
-    Language,
-    RecursiveCharacterTextSplitter,
-    MarkdownHeaderTextSplitter,
-)
+# langchain_text_splitters is imported lazily inside each strategy function
+# and _get_ext_to_language — importing it at module level pulls torch (~3 s).
 
 # Type aliases for readability
 _LengthFn = Callable[[str], int]
@@ -172,6 +169,7 @@ def _enrich_chunks(
 def _chunk_fixed(
     doc: Document, conf: GroupChunkingConfig, length_fn: _LengthFn = len
 ) -> list[ChunkDraft]:
+    from langchain_text_splitters import RecursiveCharacterTextSplitter
     splitter = RecursiveCharacterTextSplitter(
         chunk_size=conf.chunk_size,
         chunk_overlap=conf.overlap,
@@ -183,6 +181,7 @@ def _chunk_fixed(
 def _chunk_paragraph(
     doc: Document, conf: GroupChunkingConfig, length_fn: _LengthFn = len
 ) -> list[ChunkDraft]:
+    from langchain_text_splitters import RecursiveCharacterTextSplitter
     splitter = RecursiveCharacterTextSplitter(
         separators=["\n\n"],
         keep_separator=False,
@@ -217,6 +216,7 @@ def _chunk_heading(
     ``length_fn`` is used for both the size check and the sub-splitter so that
     ``unit = "tokens"`` is respected end-to-end.
     """
+    from langchain_text_splitters import MarkdownHeaderTextSplitter, RecursiveCharacterTextSplitter
     text = getattr(doc, "text", "") or ""
 
     md_splitter = MarkdownHeaderTextSplitter(
@@ -266,71 +266,82 @@ def _chunk_heading(
 
 # Maps file extensions to LangChain Language enum values so the splitter can
 # use language-specific separators (e.g. \nclass , \ndef  for Python).
-_EXT_TO_LANGUAGE: dict[str, Language] = {
-    # Python
-    ".py": Language.PYTHON,
-    ".pyw": Language.PYTHON,
-    # JavaScript / TypeScript
-    ".js": Language.JS,
-    ".mjs": Language.JS,
-    ".cjs": Language.JS,
-    ".jsx": Language.JS,
-    ".ts": Language.TS,
-    ".tsx": Language.TS,
-    # Go
-    ".go": Language.GO,
-    # Rust
-    ".rs": Language.RUST,
-    # Ruby
-    ".rb": Language.RUBY,
-    # Java
-    ".java": Language.JAVA,
-    # C / C++
-    ".c": Language.C,
-    ".h": Language.C,
-    ".cpp": Language.CPP,
-    ".cc": Language.CPP,
-    ".cxx": Language.CPP,
-    ".hpp": Language.CPP,
-    # C#
-    ".cs": Language.CSHARP,
-    # Swift
-    ".swift": Language.SWIFT,
-    # Kotlin
-    ".kt": Language.KOTLIN,
-    ".kts": Language.KOTLIN,
-    # Scala
-    ".scala": Language.SCALA,
-    # PHP
-    ".php": Language.PHP,
-    # R
-    ".r": Language.R,
-    # Lua
-    ".lua": Language.LUA,
-    # Perl
-    ".pl": Language.PERL,
-    ".pm": Language.PERL,
-    # Elixir
-    ".ex": Language.ELIXIR,
-    ".exs": Language.ELIXIR,
-    # Haskell
-    ".hs": Language.HASKELL,
-    # Solidity
-    ".sol": Language.SOL,
-    # Protobuf
-    ".proto": Language.PROTO,
-    # PowerShell
-    ".ps1": Language.POWERSHELL,
-}
+# Built once on first use — keeps the Language enum but avoids importing
+# langchain_text_splitters (which pulls torch) at module load time.
+_EXT_TO_LANGUAGE: "dict | None" = None
 
 
-def _detect_language(doc: Document) -> Optional[Language]:
+def _get_ext_to_language() -> dict:
+    global _EXT_TO_LANGUAGE
+    if _EXT_TO_LANGUAGE is not None:
+        return _EXT_TO_LANGUAGE
+    from langchain_text_splitters import Language
+    _EXT_TO_LANGUAGE = {
+        # Python
+        ".py": Language.PYTHON,
+        ".pyw": Language.PYTHON,
+        # JavaScript / TypeScript
+        ".js": Language.JS,
+        ".mjs": Language.JS,
+        ".cjs": Language.JS,
+        ".jsx": Language.JS,
+        ".ts": Language.TS,
+        ".tsx": Language.TS,
+        # Go
+        ".go": Language.GO,
+        # Rust
+        ".rs": Language.RUST,
+        # Ruby
+        ".rb": Language.RUBY,
+        # Java
+        ".java": Language.JAVA,
+        # C / C++
+        ".c": Language.C,
+        ".h": Language.C,
+        ".cpp": Language.CPP,
+        ".cc": Language.CPP,
+        ".cxx": Language.CPP,
+        ".hpp": Language.CPP,
+        # C#
+        ".cs": Language.CSHARP,
+        # Swift
+        ".swift": Language.SWIFT,
+        # Kotlin
+        ".kt": Language.KOTLIN,
+        ".kts": Language.KOTLIN,
+        # Scala
+        ".scala": Language.SCALA,
+        # PHP
+        ".php": Language.PHP,
+        # R
+        ".r": Language.R,
+        # Lua
+        ".lua": Language.LUA,
+        # Perl
+        ".pl": Language.PERL,
+        ".pm": Language.PERL,
+        # Elixir
+        ".ex": Language.ELIXIR,
+        ".exs": Language.ELIXIR,
+        # Haskell
+        ".hs": Language.HASKELL,
+        # Solidity
+        ".sol": Language.SOL,
+        # Protobuf
+        ".proto": Language.PROTO,
+        # PowerShell
+        ".ps1": Language.POWERSHELL,
+    }
+    return _EXT_TO_LANGUAGE
+
+
+def _detect_language(doc: Document) -> "Optional[Language]":
     """Return the Language enum for the document's file extension, or None."""
     source = getattr(doc, "source", None)
     rel_path = getattr(source, "rel_path", None) if source else None
     if not rel_path:
         return None
-    return _EXT_TO_LANGUAGE.get(Path(rel_path).suffix.lower())
+    return _get_ext_to_language().get(Path(rel_path).suffix.lower())
 
 
 def _chunk_code(
@@ -346,6 +357,7 @@ def _chunk_code(
     Files with an unrecognised extension fall back to fixed chunking so that
     any file assigned to a ``codeAware`` group is still processed correctly.
     """
+    from langchain_text_splitters import RecursiveCharacterTextSplitter
     text = getattr(doc, "text", "") or ""
     language = _detect_language(doc)
 
