@@ -1,9 +1,8 @@
 # Lazy re-export: importing this package does not pull in ingest_service
 # (and transitively sentence_transformers / torch) until do_ingest is
 # actually accessed.  This keeps `rag ingest` startup near-instant.
-from .logging import log_stage, log_error
 
-__all__ = ["do_ingest", "log_stage", "log_error"]
+__all__ = ["do_ingest"]
 
 
 def __getattr__(name: str):

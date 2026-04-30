@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Callable, Optional
 from raggen.core.config.project import ProjectConfig
 from raggen.core.embeddings.model_specs_cache import ModelSpecsCache, MissingModelSpecsError
-from raggen.core.ingest.logging import log_stage, log_error, logger
 from raggen.core.ingest.gating import (
     should_ingest_raw_bytes,
     should_ingest_parsed_document,
@@ -32,7 +32,10 @@ from raggen.core.runs.decorators import persist_result
 
 
 @persist_result(get_run_store)
-def do_ingest(destructive: bool = False) -> ResultEnvelope:
+def do_ingest(
+    destructive: bool = False,
+    on_file: Optional[Callable[[], None]] = None,
+) -> ResultEnvelope:
     cfg = ProjectConfig.get_config()
 
     # Resolve model capabilities from the cache written by `rag build`.
@@ -104,31 +107,27 @@ def do_ingest(destructive: bool = False) -> ResultEnvelope:
         chunker = chunk_registry.get(group, length_function=length_fn)
 
         for fr in file_refs:
+            if on_file:
+                on_file()
             current_files.add(fr.relative_path)
             # gating: raw bytes
             if not should_ingest_changed_file(fr, cfg):
-                m = f"Skipping {
-                    fr.relative_path}: file already ingested and unchanged"
-                logger.warning(m)
-                ingest_result.warnings.append(ResultMessage(
-                    code="unchanged", message=m))
+                # Unchanged files are normal — count them but don't add noise
+                # to the warnings list. The total is reported in docs_skipped.
                 skip_count += 1
                 continue
             try:
                 data = Path(fr.path).read_bytes()
             except Exception:
                 m = f"Skipping {fr.relative_path}: could not read file"
-                logger.warning(m)
                 ingest_result.warnings.append(ResultMessage(
                     code="read_error", message=m))
                 skip_count += 1
                 continue
             ok, reason = should_ingest_raw_bytes(data)
             if not ok:
-                m = f"Skipping {fr.relative_path}: empty file (0 bytes)"
-                logger.warning(m)
-                ingest_result.warnings.append(ResultMessage(
-                    code="zero_bytes", message=m))
+                # Empty files are counted but not individually warned about —
+                # they're a normal edge-case covered by the skipped total.
                 skip_count += 1
                 continue
 
@@ -149,14 +148,12 @@ def do_ingest(destructive: bool = False) -> ResultEnvelope:
                         f"(threshold: {cfg.scan.max_encoding_error_ratio:.1%}). "
                         "File is likely binary or severely corrupted."
                     )
-                    logger.warning(m)
                     ingest_result.warnings.append(
                         ResultMessage(code="binary_or_corrupt", message=m)
                     )
                     skip_count += 1
                     continue
                 for w in result.warnings:
-                    logger.warning(w)
                     ingest_result.warnings.append(
                         ResultMessage(code="encoding_warning", message=w)
                     )
@@ -164,10 +161,8 @@ def do_ingest(destructive: bool = False) -> ResultEnvelope:
                 # gating: parsed document
                 ok2, reason2 = should_ingest_parsed_document(doc)
                 if not ok2:
-                    m = f"Skipping {fr.relative_path}: empty file"
-                    logger.warning(m)
-                    ingest_result.warnings.append(ResultMessage(
-                        code="empty_file", message=m))
+                    # Parsed-but-empty files are counted but not individually
+                    # warned about — covered by the skipped total.
                     skip_count += 1
                     continue
                 chunks = chunker.chunk(doc)
@@ -229,14 +224,9 @@ def do_ingest(destructive: bool = False) -> ResultEnvelope:
                 chunk_count += len(chunk_rows)
                 emb_count += len(vectors)
             except Exception as exc:
-                log_error(str(fr.path), "ingest", exc)
                 ingest_result.errors.append(ResultMessage(
                     code="ingestion_error", message=f"path: {str(fr.path)}, error: {str(exc)}"))
 
-    log_stage(
-        "ingest_done",
-        {"docs": doc_count, "chunks": chunk_count, "embeddings": emb_count},
-    )
     # compute skipped/docs parsed/docs deleted
     docs_to_remove = db_files - current_files
     n_removed = delete_documents(

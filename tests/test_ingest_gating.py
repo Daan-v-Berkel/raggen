@@ -84,8 +84,8 @@ def test_empty_raw_file_is_skipped(tmp_path, monkeypatch):
     monkeypatch.setattr(ParserService, "parse_document", _fail_parse)
 
     result = do_ingest()
-    empty_after_parse = [x for x in result.warnings if x.code == 'zero_bytes']
-    assert len(empty_after_parse) == 1
+    assert result.data["summary"]["docs_parsed"] == 0
+    assert result.data["summary"]["docs_skipped"] == 1
 
 
 def test_empty_parsed_document_is_skipped(tmp_path, monkeypatch):
@@ -135,8 +135,8 @@ def test_empty_parsed_document_is_skipped(tmp_path, monkeypatch):
     monkeypatch.setattr(chunker, "chunk", _fail_chunk)
 
     result = do_ingest()
-    empty_after_parse = [x for x in result.warnings if x.code == 'empty_file']
-    assert len(empty_after_parse) == 1
+    assert result.data["summary"]["docs_parsed"] == 0
+    assert result.data["summary"]["docs_skipped"] == 1
 
 
 def test_whitespace_only_file_is_skipped(tmp_path, monkeypatch):
@@ -183,5 +183,5 @@ def test_whitespace_only_file_is_skipped(tmp_path, monkeypatch):
         _ for _ in ()).throw(AssertionError("chunker should not be called")))
 
     result = do_ingest()
-    empty_after_parse = [x for x in result.warnings if x.code == 'empty_file']
-    assert len(empty_after_parse) == 1
+    assert result.data["summary"]["docs_parsed"] == 0
+    assert result.data["summary"]["docs_skipped"] == 1

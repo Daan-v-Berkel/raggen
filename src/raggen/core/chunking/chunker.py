@@ -264,84 +264,72 @@ def _chunk_heading(
 # codeAware helpers
 # ---------------------------------------------------------------------------
 
-# Maps file extensions to LangChain Language enum values so the splitter can
-# use language-specific separators (e.g. \nclass , \ndef  for Python).
-# Built once on first use — keeps the Language enum but avoids importing
-# langchain_text_splitters (which pulls torch) at module load time.
-_EXT_TO_LANGUAGE: "dict | None" = None
+# Bridge from Pygments lexer names to LangChain Language enum values.
+# Pygments handles all the extension→language logic; we only need to map
+# its human-readable lexer names to the enum values LangChain understands.
+# Both imports are deferred to _detect_language so module load stays fast.
+_PYGMENTS_TO_LANGCHAIN: "dict[str, object] | None" = None
 
 
-def _get_ext_to_language() -> dict:
-    global _EXT_TO_LANGUAGE
-    if _EXT_TO_LANGUAGE is not None:
-        return _EXT_TO_LANGUAGE
+def _get_pygments_map() -> dict:
+    global _PYGMENTS_TO_LANGCHAIN
+    if _PYGMENTS_TO_LANGCHAIN is not None:
+        return _PYGMENTS_TO_LANGCHAIN
     from langchain_text_splitters import Language
-    _EXT_TO_LANGUAGE = {
-        # Python
-        ".py": Language.PYTHON,
-        ".pyw": Language.PYTHON,
-        # JavaScript / TypeScript
-        ".js": Language.JS,
-        ".mjs": Language.JS,
-        ".cjs": Language.JS,
-        ".jsx": Language.JS,
-        ".ts": Language.TS,
-        ".tsx": Language.TS,
-        # Go
-        ".go": Language.GO,
-        # Rust
-        ".rs": Language.RUST,
-        # Ruby
-        ".rb": Language.RUBY,
-        # Java
-        ".java": Language.JAVA,
-        # C / C++
-        ".c": Language.C,
-        ".h": Language.C,
-        ".cpp": Language.CPP,
-        ".cc": Language.CPP,
-        ".cxx": Language.CPP,
-        ".hpp": Language.CPP,
-        # C#
-        ".cs": Language.CSHARP,
-        # Swift
-        ".swift": Language.SWIFT,
-        # Kotlin
-        ".kt": Language.KOTLIN,
-        ".kts": Language.KOTLIN,
-        # Scala
-        ".scala": Language.SCALA,
-        # PHP
-        ".php": Language.PHP,
-        # R
-        ".r": Language.R,
-        # Lua
-        ".lua": Language.LUA,
-        # Perl
-        ".pl": Language.PERL,
-        ".pm": Language.PERL,
-        # Elixir
-        ".ex": Language.ELIXIR,
-        ".exs": Language.ELIXIR,
-        # Haskell
-        ".hs": Language.HASKELL,
-        # Solidity
-        ".sol": Language.SOL,
-        # Protobuf
-        ".proto": Language.PROTO,
-        # PowerShell
-        ".ps1": Language.POWERSHELL,
+    _PYGMENTS_TO_LANGCHAIN = {
+        "Python":            Language.PYTHON,
+        "JavaScript":        Language.JS,
+        "JSX":               Language.JS,
+        "TypeScript":        Language.TS,
+        "TypeScript/TSX":    Language.TS,
+        "TSX":               Language.TS,
+        "Go":                Language.GO,
+        "Rust":              Language.RUST,
+        "Ruby":              Language.RUBY,
+        "Java":              Language.JAVA,
+        "C":                 Language.C,
+        "C++":               Language.CPP,
+        "C#":                Language.CSHARP,
+        "Swift":             Language.SWIFT,
+        "Kotlin":            Language.KOTLIN,
+        "Scala":             Language.SCALA,
+        "PHP":               Language.PHP,
+        "R":                 Language.R,
+        "Lua":               Language.LUA,
+        "Perl":              Language.PERL,
+        "Elixir":            Language.ELIXIR,
+        "Haskell":           Language.HASKELL,
+        "Solidity":          Language.SOL,
+        "Protocol Buffer":   Language.PROTO,
+        "PowerShell":        Language.POWERSHELL,
     }
-    return _EXT_TO_LANGUAGE
+    return _PYGMENTS_TO_LANGCHAIN
 
 
-def _detect_language(doc: Document) -> "Optional[Language]":
-    """Return the Language enum for the document's file extension, or None."""
+def _detect_language(doc: Document) -> "Optional[object]":
+    """Detect the LangChain Language enum for the document's file, or None.
+
+    Uses Pygments' comprehensive extension registry so we don't maintain a
+    hand-rolled extension table.  Unknown extensions return None, which causes
+    _chunk_code to fall back to fixed chunking.
+    """
     source = getattr(doc, "source", None)
     rel_path = getattr(source, "rel_path", None) if source else None
     if not rel_path:
         return None
-    return _get_ext_to_language().get(Path(rel_path).suffix.lower())
+
+    try:
+        from pygments.lexers import get_lexer_for_filename
+        from pygments.util import ClassNotFound
+    except ImportError:
+        return None
+
+    try:
+        lexer = get_lexer_for_filename(str(rel_path))
+    except ClassNotFound:
+        return None
+
+    return _get_pygments_map().get(lexer.name)
 
 
 def _chunk_code(

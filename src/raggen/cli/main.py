@@ -112,6 +112,12 @@ def build_parser() -> argparse.ArgumentParser:
             "Use with care, as this WILL remove existing indexed data."
         ),
     )
+    ingest_p.add_argument(
+        "--no-progress",
+        action="store_true",
+        dest="no_progress",
+        help="Suppress the per-file progress line. Useful when capturing output or running non-interactively.",
+    )
 
     # query
     query_p = sub.add_parser(
@@ -247,6 +253,7 @@ def _dispatch(args, parser):
             destructive=args.destructive,
             detailed=args.detailed,
             format_as=args.format,
+            no_progress=args.no_progress,
         )
 
     if args.command == "query":
