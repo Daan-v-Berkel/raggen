@@ -84,7 +84,7 @@ class TestModelCapabilities:
 class TestModelInspector:
     def test_introspect_returns_correct_capabilities(self, monkeypatch):
         monkeypatch.setattr(
-            "raggen.core.embeddings.capabilities.create_embedder",
+            "raggen.core.embeddings.embedder.create_embedder",
             _fake_create_embedder,
         )
         caps = ModelInspector.introspect("sentence-transformers/all-MiniLM-L6-v2")
@@ -102,7 +102,7 @@ class TestModelInspector:
             return _FakeEmbedder()
 
         monkeypatch.setattr(
-            "raggen.core.embeddings.capabilities.create_embedder",
+            "raggen.core.embeddings.embedder.create_embedder",
             _capturing_factory,
         )
         ModelInspector.introspect("any-model", cache_dir=".rag/models")
@@ -113,7 +113,7 @@ class TestModelInspector:
             raise ModelLoadError(f"Failed to load '{model_id}'.")
 
         monkeypatch.setattr(
-            "raggen.core.embeddings.capabilities.create_embedder",
+            "raggen.core.embeddings.embedder.create_embedder",
             _failing_factory,
         )
         with pytest.raises(ModelLoadError, match="bad-model-id"):
@@ -135,7 +135,7 @@ class TestModelLoadError:
             )
 
         monkeypatch.setattr(
-            "raggen.core.embeddings.capabilities.create_embedder",
+            "raggen.core.embeddings.embedder.create_embedder",
             _patched,
         )
 

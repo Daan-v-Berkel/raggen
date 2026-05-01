@@ -4,17 +4,6 @@ import argparse
 import sys
 
 from raggen.core.results.formats import OutputFormat
-from raggen.core.embeddings.config_validator import ModelCapabilityError
-from raggen.core.embeddings.model_specs_cache import MissingModelSpecsError
-from raggen.core.store.exceptions import SchemaMismatchError
-from raggen.core.config.project import ConfigError
-
-_USER_ERRORS = (
-    ModelCapabilityError,
-    MissingModelSpecsError,
-    SchemaMismatchError,
-    ConfigError,
-)
 
 
 def build_common_parser() -> argparse.ArgumentParser:
@@ -216,12 +205,24 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv=None):
+    from raggen.core.embeddings.config_validator import ModelCapabilityError
+    from raggen.core.embeddings.model_specs_cache import MissingModelSpecsError
+    from raggen.core.store.exceptions import SchemaMismatchError
+    from raggen.core.config.project import ConfigError
+
+    _user_errors = (
+        ModelCapabilityError,
+        MissingModelSpecsError,
+        SchemaMismatchError,
+        ConfigError,
+    )
+
     parser = build_parser()
     args = parser.parse_args(argv)
 
     try:
         return _dispatch(args, parser)
-    except _USER_ERRORS as exc:
+    except _user_errors as exc:
         print(str(exc), file=sys.stderr)
         return 1
 

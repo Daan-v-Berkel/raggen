@@ -11,8 +11,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Optional
 
-from raggen.core.embeddings.embedder import create_embedder
-
 
 # ---------------------------------------------------------------------------
 # Exceptions
@@ -56,6 +54,7 @@ class ModelInspector:
 
         Raises ModelLoadError if the model cannot be loaded.
         """
+        from raggen.core.embeddings.embedder import create_embedder  # noqa: PLC0415
         embedder = create_embedder(
             model_id=model_id,
             backend=backend,
