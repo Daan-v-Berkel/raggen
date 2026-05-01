@@ -122,9 +122,8 @@ class ProjectValidator:
                             f"\n"
                             f"Existing indexed chunks for this group may not "
                             f"reflect current settings.\n"
-                            f"To re-index this group: "
-                            f"rag ingest --group {group} --force\n"
-                            f"To rebuild everything:  rag build --destructive"
+                            f"Run 'rag ingest --force' to re-index all files "
+                            f"with the current settings."
                         )
                         logger.warning(m)
                         warnings.append(
@@ -154,7 +153,8 @@ class ProjectValidator:
                         f"Chunking group '{group}': "
                         f"chunk_size={group_conf.chunk_size} chars "
                         f"may produce chunks up to ~{estimated_tokens} tokens "
-                        f"(estimated at {_CHARS_PER_TOKEN_FLOOR} chars/token — "
+                        f"(estimated at {
+                            _CHARS_PER_TOKEN_FLOOR} chars/token — "
                         f"actual varies by content). "
                         f"The model supports {_usable_tokens} content tokens. "
                         f"Chunks that exceed this will be silently truncated "
@@ -164,7 +164,8 @@ class ProjectValidator:
                     )
                     logger.warning(m)
                     warnings.append(
-                        ResultMessage(code="chunk_size_estimate_warning", message=m)
+                        ResultMessage(
+                            code="chunk_size_estimate_warning", message=m)
                     )
 
         return warnings

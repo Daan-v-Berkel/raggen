@@ -4,12 +4,6 @@ import argparse
 import sys
 
 from raggen.core.results.formats import OutputFormat
-
-# ---------------------------------------------------------------------------
-# User-facing errors: printed cleanly to stderr with no traceback.
-# All of these carry a self-contained, actionable message written for the end
-# user — a stack trace would bury that message and cause unnecessary panic.
-# ---------------------------------------------------------------------------
 from raggen.core.embeddings.config_validator import ModelCapabilityError
 from raggen.core.embeddings.model_specs_cache import MissingModelSpecsError
 from raggen.core.store.exceptions import SchemaMismatchError
@@ -45,9 +39,9 @@ def build_parser() -> argparse.ArgumentParser:
     common_parser = build_common_parser()
 
     parser = argparse.ArgumentParser(
-        prog="raggen",
+        prog="rag",
         description=(
-            "Raggen is a local RAG indexing and querying tool.\n"
+            "raggen — local RAG indexing and querying tool.\n"
             "Use one of the subcommands below to initialize a project, ingest files, "
             "or query the indexed content."
         ),
@@ -58,7 +52,7 @@ def build_parser() -> argparse.ArgumentParser:
         dest="command",
         title="commands",
         metavar="<command>",
-        help="Run 'raggen <command> -h' for command-specific help.",
+        help="Run 'rag <command> -h' for command-specific help.",
     )
 
     # init
@@ -68,7 +62,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="Initialise project scaffold and default configuration",
     )
     init_p.add_argument("root", type=str)
-    init_p.add_argument("--force", action="store_true")
+    init_p.add_argument(
+        "--force",
+        action="store_true",
+        help="Overwrite an existing project scaffold. WARNING: deletes the entire .rag directory.",
+    )
 
     # build
     build_p = sub.add_parser(
@@ -105,12 +103,18 @@ def build_parser() -> argparse.ArgumentParser:
         help="Path to the project configuration TOML file.",
     )
     ingest_p.add_argument(
-        "--destructive",
+        "--force",
         action="store_true",
         help=(
-            "Rebuild database state destructively before ingesting. "
-            "Use with care, as this WILL remove existing indexed data."
+            "Re-ingest all files, even those that have not changed. "
+            "Useful after chunking or embedding config changes."
         ),
+    )
+    ingest_p.add_argument(
+        "--no-progress",
+        action="store_true",
+        dest="no_progress",
+        help="Suppress the per-file progress line. Useful when capturing output or running non-interactively.",
     )
 
     # query
@@ -147,6 +151,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     # runs
     runs_p = sub.add_parser("runs", help="Inspect stored run history")
+    runs_p.set_defaults(_runs_parser=runs_p)
     runs_sub = runs_p.add_subparsers(dest="runs_command")
 
     runs_list_p = runs_sub.add_parser(
@@ -198,7 +203,7 @@ def build_parser() -> argparse.ArgumentParser:
     runs_show_p.add_argument(
         "--latest",
         action="store_true",
-        help="Show the latest run, optionally filtered by --action.",
+        help="Show the latest run, optionally filtered by --operation.",
     )
     runs_show_p.add_argument(
         "--operation",
@@ -244,9 +249,10 @@ def _dispatch(args, parser):
         from raggen.cli.commands import ingest as ingest_cmd
         return ingest_cmd.run_ingest(
             config_path=args.config,
-            destructive=args.destructive,
+            force=args.force,
             detailed=args.detailed,
             format_as=args.format,
+            no_progress=args.no_progress,
         )
 
     if args.command == "query":
@@ -278,6 +284,9 @@ def _dispatch(args, parser):
                 detailed=args.detailed,
                 format_as=args.format,
             )
+        # `rag runs` with no subcommand — show runs-specific help
+        args._runs_parser.print_help()
+        return 1
 
     parser.print_help()
     return 1

@@ -30,4 +30,4 @@ def run_build(
     renderer = get_renderer(format_as)
     print(renderer.render(projected))
 
-    return 0
+    return 0 if result.success else 1

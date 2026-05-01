@@ -243,8 +243,8 @@ class TestIngestChunkingDrift:
         w = next(w for w in result.warnings if w.code == "chunking_drift")
         assert "fallback" in w.message
 
-    def test_warning_contains_ingest_group_force_command(self, tmp_path, monkeypatch):
-        """The drift warning must include 'rag ingest --group <name> --force'."""
+    def test_warning_contains_force_ingest_command(self, tmp_path, monkeypatch):
+        """The drift warning must include 'rag ingest --force'."""
         cfg = _bootstrap_project(tmp_path, monkeypatch)
         cfg.chunking["fallback"].overlap += 100
 
@@ -256,10 +256,10 @@ class TestIngestChunkingDrift:
 
         result = do_ingest()
         w = next(w for w in result.warnings if w.code == "chunking_drift")
-        assert "rag ingest --group fallback --force" in w.message
+        assert "rag ingest --force" in w.message
 
-    def test_warning_contains_build_destructive_command(self, tmp_path, monkeypatch):
-        """The drift warning must include 'rag build --destructive'."""
+    def test_warning_mentions_current_settings(self, tmp_path, monkeypatch):
+        """The drift warning must mention re-indexing with current settings."""
         cfg = _bootstrap_project(tmp_path, monkeypatch)
         cfg.chunking["fallback"].strategy = "paragraphMerge"
 
@@ -271,7 +271,7 @@ class TestIngestChunkingDrift:
 
         result = do_ingest()
         w = next(w for w in result.warnings if w.code == "chunking_drift")
-        assert "rag build --destructive" in w.message
+        assert "current settings" in w.message
 
     def test_drift_does_not_abort_ingest(self, tmp_path, monkeypatch):
         """A chunking drift warning must not prevent ingest from succeeding."""
