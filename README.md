@@ -105,6 +105,14 @@ rag runs show --latest --operation ingest  # show the last ingest run
 rag runs show <run-id>                     # show a specific run by ID
 ```
 
+### `rag --version`
+
+Print the installed version.
+
+```bash
+rag --version
+```
+
 ---
 
 ## Configuration

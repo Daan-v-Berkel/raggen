@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import sys
 
+from raggen import __version__
 from raggen.core.results.formats import OutputFormat
 
 
@@ -35,6 +36,11 @@ def build_parser() -> argparse.ArgumentParser:
             "or query the indexed content."
         ),
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+    )
+    parser.add_argument(
+        "--version",
+        action="version",
+        version=f"raggen {__version__}",
     )
 
     sub = parser.add_subparsers(

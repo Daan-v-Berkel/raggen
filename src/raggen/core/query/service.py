@@ -7,6 +7,7 @@ from raggen.core.runtime import get_engine
 from raggen.core.config.project import ProjectConfig
 from raggen.core.embeddings.embedder import create_embedder
 from raggen.core.embeddings.model_specs_cache import ModelSpecsCache, MissingModelSpecsError
+from raggen.core.embeddings.config_validator import ModelCapabilityError
 from raggen.core.store.plugin_loader import load_vector_backend, resolve_vector_backend_import
 from raggen.core.results.envelope import ResultEnvelope, ResultMessage, init_result
 from raggen.core.runs.store import get_run_store
@@ -157,7 +158,8 @@ def _resolve_query_model_id(request: QueryRequest, cfg: ProjectConfig) -> str:
 def _validate_query_embedder(embedder, *, expected_dim: int) -> None:
     actual_dim = int(embedder.dim)
     if actual_dim != expected_dim:
-        raise ValueError(
-            f"Query embedding dimension mismatch: model returns {actual_dim}, "
-            f"but project expects {expected_dim}."
+        raise ModelCapabilityError(
+            f"Query embedding dimension mismatch: model returns {actual_dim} dimensions, "
+            f"but the project index was built with {expected_dim}.\n"
+            "Run 'rag build --destructive && rag ingest' to rebuild with the current model."
         )
