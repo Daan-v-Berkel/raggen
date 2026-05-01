@@ -207,12 +207,14 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv=None):
     from raggen.core.embeddings.config_validator import ModelCapabilityError
     from raggen.core.embeddings.model_specs_cache import MissingModelSpecsError
+    from raggen.core.embeddings.capabilities import ModelLoadError
     from raggen.core.store.exceptions import SchemaMismatchError
     from raggen.core.config.project import ConfigError
 
     _user_errors = (
         ModelCapabilityError,
         MissingModelSpecsError,
+        ModelLoadError,
         SchemaMismatchError,
         ConfigError,
     )

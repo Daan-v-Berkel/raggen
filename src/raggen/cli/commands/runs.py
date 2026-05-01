@@ -16,7 +16,11 @@ def run_list(
     detailed: bool = False,
     format_as: OutputFormat = OutputFormat.TEXT,
 ) -> int:
-    bootstrap(Path(config_path) if config_path else None)
+    try:
+        bootstrap(Path(config_path) if config_path else None)
+    except BootstrapError as e:
+        print(f"Error: {e}")
+        return 1
     store = get_run_store()
     runs = store.list_runs(limit=limit, operation=operation)
     if not detailed and len(runs) > 20:

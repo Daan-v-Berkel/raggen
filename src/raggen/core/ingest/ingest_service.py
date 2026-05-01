@@ -244,7 +244,7 @@ def do_ingest(
         "embeddings": emb_count,
     }
 
-    ingest_result.success = True
+    ingest_result.success = not bool(ingest_result.errors)
     ingest_result.data = {
         "summary": result_data,
         "details": result_data,
