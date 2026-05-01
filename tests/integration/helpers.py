@@ -3,14 +3,16 @@ from __future__ import annotations
 import json
 import os
 import subprocess
+import sys
 from pathlib import Path
 from typing import Any
 
-# You can override this in CI if needed:
-#   RAG_TEST_CLI="python -m raggen.cli"
-# By default, these tests use the installed console script: `rag`
+# By default, use the same Python interpreter that is running pytest so the
+# test always finds the installed raggen package regardless of whether the
+# `rag` entry-point script is on PATH.
+# Override in CI if needed: RAG_TEST_CLI="path/to/rag"
 
-CLI_COMMAND = os.environ.get("RAG_TEST_CLI", "rag")
+CLI_COMMAND = os.environ.get("RAG_TEST_CLI", f"{sys.executable} -m raggen.cli.main")
 
 
 def build_command(*args: str) -> list[str]:

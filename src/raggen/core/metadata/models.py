@@ -16,6 +16,9 @@ class FoundationalConfigSnapshot(BaseModel):
     schema_version: str
 
     embedding_model: str
+    # Defaults to "auto" so that project states created before this field was
+    # introduced deserialise correctly without errors.
+    embedding_backend: str = "auto"
     # None before the first build resolves the dim from the model specs cache.
     # After a successful build this is always a concrete integer.
     embedding_dim: Optional[int] = None

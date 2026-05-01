@@ -203,7 +203,7 @@ class TestIngestChunkingDrift:
         """Unchanged chunking config must produce no chunking_drift warnings."""
         cfg = _bootstrap_project(tmp_path, monkeypatch)
         monkeypatch.setattr(
-            "raggen.core.ingest.ingest_service.LocalSentenceTransformerEmbedder",
+            "raggen.core.ingest.ingest_service.create_embedder",
             lambda *a, **kw: _dummy_embedder_factory(),
         )
 
@@ -220,7 +220,7 @@ class TestIngestChunkingDrift:
 
         monkeypatch.chdir(tmp_path)
         monkeypatch.setattr(
-            "raggen.core.ingest.ingest_service.LocalSentenceTransformerEmbedder",
+            "raggen.core.ingest.ingest_service.create_embedder",
             lambda *a, **kw: _dummy_embedder_factory(),
         )
 
@@ -235,7 +235,7 @@ class TestIngestChunkingDrift:
 
         monkeypatch.chdir(tmp_path)
         monkeypatch.setattr(
-            "raggen.core.ingest.ingest_service.LocalSentenceTransformerEmbedder",
+            "raggen.core.ingest.ingest_service.create_embedder",
             lambda *a, **kw: _dummy_embedder_factory(),
         )
 
@@ -250,7 +250,7 @@ class TestIngestChunkingDrift:
 
         monkeypatch.chdir(tmp_path)
         monkeypatch.setattr(
-            "raggen.core.ingest.ingest_service.LocalSentenceTransformerEmbedder",
+            "raggen.core.ingest.ingest_service.create_embedder",
             lambda *a, **kw: _dummy_embedder_factory(),
         )
 
@@ -265,7 +265,7 @@ class TestIngestChunkingDrift:
 
         monkeypatch.chdir(tmp_path)
         monkeypatch.setattr(
-            "raggen.core.ingest.ingest_service.LocalSentenceTransformerEmbedder",
+            "raggen.core.ingest.ingest_service.create_embedder",
             lambda *a, **kw: _dummy_embedder_factory(),
         )
 
@@ -283,7 +283,7 @@ class TestIngestChunkingDrift:
 
         monkeypatch.chdir(root)
         monkeypatch.setattr(
-            "raggen.core.ingest.ingest_service.LocalSentenceTransformerEmbedder",
+            "raggen.core.ingest.ingest_service.create_embedder",
             lambda *a, **kw: _dummy_embedder_factory(),
         )
 
@@ -310,7 +310,7 @@ class TestIngestChunkingDrift:
 
         monkeypatch.chdir(tmp_path)
         monkeypatch.setattr(
-            "raggen.core.ingest.ingest_service.LocalSentenceTransformerEmbedder",
+            "raggen.core.ingest.ingest_service.create_embedder",
             lambda *a, **kw: _dummy_embedder_factory(),
         )
 
@@ -336,7 +336,7 @@ class TestIngestChunkingDrift:
 
         monkeypatch.chdir(tmp_path)
         monkeypatch.setattr(
-            "raggen.core.ingest.ingest_service.LocalSentenceTransformerEmbedder",
+            "raggen.core.ingest.ingest_service.create_embedder",
             lambda *a, **kw: _dummy_embedder_factory(),
         )
 
@@ -360,7 +360,7 @@ class TestIngestChunkingDrift:
         cfg.chunking["fallback"].chunk_size += 999
 
         monkeypatch.setattr(
-            "raggen.core.ingest.ingest_service.LocalSentenceTransformerEmbedder",
+            "raggen.core.ingest.ingest_service.create_embedder",
             lambda *a, **kw: _dummy_embedder_factory(),
         )
 
@@ -381,7 +381,7 @@ class TestIngestChunkingDrift:
 
         monkeypatch.chdir(tmp_path)
         monkeypatch.setattr(
-            "raggen.core.ingest.ingest_service.LocalSentenceTransformerEmbedder",
+            "raggen.core.ingest.ingest_service.create_embedder",
             lambda *a, **kw: _dummy_embedder_factory(),
         )
 

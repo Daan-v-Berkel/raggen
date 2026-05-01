@@ -122,7 +122,7 @@ class TestTokenUnitHardError:
         )
         monkeypatch.chdir(tmp_path)
         monkeypatch.setattr(
-            "raggen.core.ingest.ingest_service.LocalSentenceTransformerEmbedder",
+            "raggen.core.ingest.ingest_service.create_embedder",
             _make_dummy_embedder(_MODEL_MAX),
         )
 
@@ -144,7 +144,7 @@ class TestTokenUnitHardError:
         )
         monkeypatch.chdir(tmp_path)
         monkeypatch.setattr(
-            "raggen.core.ingest.ingest_service.LocalSentenceTransformerEmbedder",
+            "raggen.core.ingest.ingest_service.create_embedder",
             _make_dummy_embedder(_MODEL_MAX),
         )
 
@@ -165,7 +165,7 @@ class TestTokenUnitHardError:
         )
         monkeypatch.chdir(tmp_path)
         monkeypatch.setattr(
-            "raggen.core.ingest.ingest_service.LocalSentenceTransformerEmbedder",
+            "raggen.core.ingest.ingest_service.create_embedder",
             _make_dummy_embedder(_MODEL_MAX),
         )
 
@@ -189,7 +189,7 @@ class TestTokenUnitHardError:
         )
         monkeypatch.chdir(root)
         monkeypatch.setattr(
-            "raggen.core.ingest.ingest_service.LocalSentenceTransformerEmbedder",
+            "raggen.core.ingest.ingest_service.create_embedder",
             _make_dummy_embedder(_MODEL_MAX),
         )
 
@@ -228,7 +228,7 @@ class TestCharsUnitEstimationWarning:
         )
         monkeypatch.chdir(tmp_path)
         monkeypatch.setattr(
-            "raggen.core.ingest.ingest_service.LocalSentenceTransformerEmbedder",
+            "raggen.core.ingest.ingest_service.create_embedder",
             _make_dummy_embedder(_MODEL_MAX),
         )
 
@@ -252,7 +252,7 @@ class TestCharsUnitEstimationWarning:
         )
         monkeypatch.chdir(tmp_path)
         monkeypatch.setattr(
-            "raggen.core.ingest.ingest_service.LocalSentenceTransformerEmbedder",
+            "raggen.core.ingest.ingest_service.create_embedder",
             _make_dummy_embedder(_MODEL_MAX),
         )
 
@@ -276,7 +276,7 @@ class TestCharsUnitEstimationWarning:
         )
         monkeypatch.chdir(tmp_path)
         monkeypatch.setattr(
-            "raggen.core.ingest.ingest_service.LocalSentenceTransformerEmbedder",
+            "raggen.core.ingest.ingest_service.create_embedder",
             _make_dummy_embedder(_MODEL_MAX),
         )
 
@@ -302,7 +302,7 @@ class TestCharsUnitEstimationWarning:
         )
         monkeypatch.chdir(root)
         monkeypatch.setattr(
-            "raggen.core.ingest.ingest_service.LocalSentenceTransformerEmbedder",
+            "raggen.core.ingest.ingest_service.create_embedder",
             _make_dummy_embedder(_MODEL_MAX),
         )
 

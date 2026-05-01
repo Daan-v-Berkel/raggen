@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import sys
 from pathlib import Path
 from datetime import datetime
 from raggen.core.results.renderers import get_renderer
@@ -16,9 +17,19 @@ def run_list(
     detailed: bool = False,
     format_as: OutputFormat = OutputFormat.TEXT,
 ) -> int:
-    bootstrap(Path(config_path) if config_path else None)
-    store = get_run_store()
-    runs = store.list_runs(limit=limit, operation=operation)
+    try:
+        bootstrap(Path(config_path) if config_path else None)
+    except BootstrapError as e:
+        print(f"Error: {e}")
+        return 1
+
+    try:
+        store = get_run_store()
+        runs = store.list_runs(limit=limit, operation=operation)
+    except Exception as e:
+        print(f"Error reading run history: {e}", file=sys.stderr)
+        return 1
+
     if not detailed and len(runs) > 20:
         runs = runs[:20]
 

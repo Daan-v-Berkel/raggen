@@ -1,7 +1,8 @@
 """
-Tests for Step 1: ModelCapabilities + ModelInspector (capabilities.py).
+Tests for ModelCapabilities + ModelInspector (capabilities.py).
 
-All tests monkeypatch _load_sentence_transformer so no real model is loaded.
+ModelInspector.introspect() delegates to create_embedder(), so tests patch
+that factory rather than any backend-specific loader.
 """
 from __future__ import annotations
 
@@ -11,28 +12,42 @@ from raggen.core.embeddings.capabilities import (
     ModelCapabilities,
     ModelInspector,
     ModelLoadError,
-    _load_sentence_transformer,
 )
 
 
 # ---------------------------------------------------------------------------
-# Shared fake model
+# Shared fake embedder (satisfies EmbedderBackend protocol)
 # ---------------------------------------------------------------------------
 
 
-class _FakeModel:
-    """Minimal stand-in for a SentenceTransformer with known capabilities."""
+class _FakeEmbedder:
+    """Minimal stand-in for any EmbedderBackend with known capabilities."""
 
     def __init__(self, dim: int = 384, max_seq_length: int = 256):
+        self.model_id = "test-model"
+        self.batch_size = 32
+        self.normalize = True
         self._dim = dim
-        self.max_seq_length = max_seq_length
+        self._max_seq_length = max_seq_length
 
-    def get_sentence_embedding_dimension(self) -> int:
+    @property
+    def dim(self) -> int:
         return self._dim
 
+    @property
+    def max_seq_length(self) -> int:
+        return self._max_seq_length
 
-def _fake_loader(model_id: str, cache_dir=None) -> _FakeModel:
-    return _FakeModel(dim=384, max_seq_length=256)
+    def get_length_function(self):
+        return len
+
+    def embed_texts(self, texts, batch_size=None, normalize=None):
+        import numpy as np
+        return np.zeros((len(texts), self._dim), dtype="float32")
+
+
+def _fake_create_embedder(model_id, backend="auto", cache_dir=None, **kwargs):
+    return _FakeEmbedder(dim=384, max_seq_length=256)
 
 
 # ---------------------------------------------------------------------------
@@ -51,13 +66,13 @@ class TestModelCapabilities:
         assert caps.model_id == "sentence-transformers/all-MiniLM-L6-v2"
         assert caps.actual_dim == 384
         assert caps.max_seq_length == 256
-        assert caps.max_batch_size is None  # always None for now
+        assert caps.max_batch_size is None
 
     def test_is_frozen(self):
         caps = ModelCapabilities(
             model_id="m", actual_dim=384, max_seq_length=256, max_batch_size=None
         )
-        with pytest.raises(Exception):  # dataclass(frozen=True) raises FrozenInstanceError
+        with pytest.raises(Exception):
             caps.actual_dim = 999  # type: ignore[misc]
 
 
@@ -69,8 +84,8 @@ class TestModelCapabilities:
 class TestModelInspector:
     def test_introspect_returns_correct_capabilities(self, monkeypatch):
         monkeypatch.setattr(
-            "raggen.core.embeddings.capabilities._load_sentence_transformer",
-            _fake_loader,
+            "raggen.core.embeddings.embedder.create_embedder",
+            _fake_create_embedder,
         )
         caps = ModelInspector.introspect("sentence-transformers/all-MiniLM-L6-v2")
 
@@ -82,24 +97,24 @@ class TestModelInspector:
     def test_introspect_with_cache_dir_passes_it_through(self, monkeypatch):
         received: list = []
 
-        def _capturing_loader(model_id, cache_dir=None):
+        def _capturing_factory(model_id, backend="auto", cache_dir=None, **kwargs):
             received.append(cache_dir)
-            return _FakeModel()
+            return _FakeEmbedder()
 
         monkeypatch.setattr(
-            "raggen.core.embeddings.capabilities._load_sentence_transformer",
-            _capturing_loader,
+            "raggen.core.embeddings.embedder.create_embedder",
+            _capturing_factory,
         )
         ModelInspector.introspect("any-model", cache_dir=".rag/models")
         assert received == [".rag/models"]
 
     def test_introspect_propagates_model_load_error(self, monkeypatch):
-        def _failing_loader(model_id, cache_dir=None):
+        def _failing_factory(model_id, **kwargs):
             raise ModelLoadError(f"Failed to load '{model_id}'.")
 
         monkeypatch.setattr(
-            "raggen.core.embeddings.capabilities._load_sentence_transformer",
-            _failing_loader,
+            "raggen.core.embeddings.embedder.create_embedder",
+            _failing_factory,
         )
         with pytest.raises(ModelLoadError, match="bad-model-id"):
             ModelInspector.introspect("bad-model-id")
@@ -112,21 +127,17 @@ class TestModelInspector:
 
 class TestModelLoadError:
     def test_message_contains_model_id(self, monkeypatch):
-        """_load_sentence_transformer wraps load failures with the model ID in the message."""
-        # Simulate SentenceTransformer raising on load by patching its import path.
-        import raggen.core.embeddings.capabilities as caps_mod
-
-        original = caps_mod._load_sentence_transformer
-
-        def _patched(model_id, cache_dir=None):
-            # Call the real function but with a module-level patch on SentenceTransformer.
+        def _patched(model_id, **kwargs):
             raise ModelLoadError(
                 f"Failed to load embedding model '{model_id}'.\n"
                 "Check that the model ID is correct.\n\n"
                 "Original error: OSError: no file"
             )
 
-        monkeypatch.setattr(caps_mod, "_load_sentence_transformer", _patched)
+        monkeypatch.setattr(
+            "raggen.core.embeddings.embedder.create_embedder",
+            _patched,
+        )
 
         with pytest.raises(ModelLoadError) as exc_info:
             ModelInspector.introspect("bogus/model-that-does-not-exist")

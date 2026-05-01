@@ -121,7 +121,7 @@ class TestIngestSnapshotUpdate:
         assert new_hash != old_hash
 
         monkeypatch.setattr(
-            "raggen.core.ingest.ingest_service.LocalSentenceTransformerEmbedder",
+            "raggen.core.ingest.ingest_service.create_embedder",
             _dummy_embedder_factory,
         )
 
@@ -143,7 +143,7 @@ class TestIngestSnapshotUpdate:
         cfg.chunking["fallback"].chunk_size += 500
 
         monkeypatch.setattr(
-            "raggen.core.ingest.ingest_service.LocalSentenceTransformerEmbedder",
+            "raggen.core.ingest.ingest_service.create_embedder",
             _dummy_embedder_factory,
         )
 
@@ -183,7 +183,7 @@ class TestIngestSnapshotUpdate:
                 return len
 
         monkeypatch.setattr(
-            "raggen.core.ingest.ingest_service.LocalSentenceTransformerEmbedder",
+            "raggen.core.ingest.ingest_service.create_embedder",
             lambda *a, **kw: _FailEmbedder(),
         )
 
@@ -209,7 +209,7 @@ class TestIngestSnapshotUpdate:
         old_stored_hash = load_project_state(cfg.project_root).foundation.chunking_hashes["fallback"]
 
         monkeypatch.setattr(
-            "raggen.core.ingest.ingest_service.LocalSentenceTransformerEmbedder",
+            "raggen.core.ingest.ingest_service.create_embedder",
             _dummy_embedder_factory,
         )
 
@@ -241,7 +241,7 @@ class TestIngestSnapshotUpdate:
         expected_docs = compute_chunking_hash(cfg.chunking["docs"])
 
         monkeypatch.setattr(
-            "raggen.core.ingest.ingest_service.LocalSentenceTransformerEmbedder",
+            "raggen.core.ingest.ingest_service.create_embedder",
             _dummy_embedder_factory,
         )
 

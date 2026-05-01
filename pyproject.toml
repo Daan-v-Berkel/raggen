@@ -5,13 +5,13 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "raggen"
 version = "2026.0.1"
-description = "CLI for local RAG — scan, chunk, embed with sentence-transformers, and query files semantically."
+description = "CLI for local RAG — scan, chunk, embed, and query files semantically."
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
 "numpy==2.4.2",
 "pydantic==2.12.5",
-"sentence-transformers==5.2.3",
+"fastembed>=0.4.0",
 "SQLAlchemy==2.0.48",
 "sqlite-vec==0.1.6",
 "fancy-dataclass==0.10.2",
@@ -32,7 +32,7 @@ keywords = [
   "embeddings",
   "semantic-search",
   "vector-search",
-  "sentence-transformers",
+  "onnx",
   "information-retrieval",
   "text-chunking",
   "document-indexing",
@@ -60,6 +60,9 @@ classifiers = [
 ]
 
 [project.optional-dependencies]
+# Torch backend: sentence-transformers + PyTorch.
+# Set backend = "torch" in .rag/config.toml to activate after installing.
+torch = ["sentence-transformers>=5.0"]
 dev = [
 "pytest",
 "flake8",

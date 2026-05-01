@@ -63,7 +63,9 @@ def do_build(
     caps = _cache.get(cfg.embedding.model_id)
     if caps is None:
         caps = ModelInspector.introspect(
-            cfg.embedding.model_id, cfg.embedding.model_cache_dir
+            cfg.embedding.model_id,
+            cfg.embedding.model_cache_dir,
+            backend=cfg.embedding.backend,
         )
         _cache.put(caps)
 

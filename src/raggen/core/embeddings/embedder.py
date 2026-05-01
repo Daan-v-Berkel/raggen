@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+import importlib.util
 from dataclasses import dataclass
-from typing import List, Sequence
+from typing import TYPE_CHECKING, List, Sequence
+
 import numpy as np
 
-from raggen.core.embeddings.capabilities import _load_sentence_transformer
+if TYPE_CHECKING:
+    from raggen.core.embeddings.backends.base import EmbedderBackend
 
 
 @dataclass(frozen=True)
@@ -13,78 +16,82 @@ class EmbeddingResult:
     vector: np.ndarray  # shape: (dim,)
 
 
-class LocalSentenceTransformerEmbedder:
+# ---------------------------------------------------------------------------
+# Backend detection
+# ---------------------------------------------------------------------------
+
+
+def _detect_backend() -> str:
+    """Return 'onnx' or 'torch' based on what is installed, preferring onnx."""
+    if importlib.util.find_spec("fastembed") is not None:
+        return "onnx"
+    if importlib.util.find_spec("sentence_transformers") is not None:
+        return "torch"
+    raise RuntimeError(
+        "No embedding backend is installed.\n"
+        "  Default (ONNX):  pip install raggen\n"
+        "  Torch backend:   pip install 'raggen[torch]'"
+    )
+
+
+# ---------------------------------------------------------------------------
+# Factory
+# ---------------------------------------------------------------------------
+
+
+def create_embedder(
+    model_id: str,
+    backend: str = "auto",
+    cache_dir: str | None = None,
+    batch_size: int = 32,
+    normalize: bool = True,
+) -> "EmbedderBackend":
+    """Create and return an embedding backend instance.
+
+    backend:
+        "auto"  — use ONNX if fastembed is installed, fall back to torch.
+        "onnx"  — always use fastembed (raises if not installed).
+        "torch" — always use sentence-transformers (raises if not installed).
     """
-    Minimal CPU embedder using sentence-transformers.
+    resolved = backend if backend != "auto" else _detect_backend()
 
-    Model loading is deferred to the first instantiation (lazy import) via the
-    shared ``_load_sentence_transformer`` helper in ``capabilities.py``.  That
-    helper also handles local-cache lookup, HuggingFace download + save, and
-    verbosity suppression — nothing is duplicated here.
-
-    Determinism notes:
-    - Embeddings are stable for a given model version + text.
-    - If you change model_id, dimension may change — store model_id with vectors.
-    """
-
-    def __init__(
-        self,
-        model_id: str = "sentence-transformers/all-MiniLM-L6-v2",
-        cache_dir: str | None = None,
-        batch_size: int = 32,
-        normalize: bool = True,
-    ):
-        self.model_id = model_id
-        self.batch_size = batch_size
-        self.normalize = normalize
-        self._model = _load_sentence_transformer(model_id, cache_dir)
-
-    @property
-    def dim(self) -> int:
-        return int(self._model.get_sentence_embedding_dimension())
-
-    @property
-    def max_seq_length(self) -> int:
-        """Maximum number of tokens the model can encode (including special tokens)."""
-        return int(self._model.max_seq_length)
-
-    def get_length_function(self):
-        """Return a callable (str) -> int that counts tokens using this model's tokenizer.
-
-        Special tokens (CLS, SEP) are excluded so that ``chunk_size`` in the
-        config maps directly to content tokens, not the model's internal overhead.
-        """
-        tokenizer = self._model.tokenizer
-
-        def _count_tokens(text: str) -> int:
-            return len(tokenizer.encode(text, add_special_tokens=False))
-
-        return _count_tokens
-
-    def embed_texts(
-        self,
-        texts: Sequence[str],
-        batch_size: int | None = None,
-        normalize: bool | None = None,
-    ) -> np.ndarray:
-        """Returns a 2D array: shape (n, dim), dtype float32."""
-        vectors = self._model.encode(
-            list(texts),
-            batch_size=batch_size if batch_size is not None else self.batch_size,
-            show_progress_bar=False,
-            normalize_embeddings=normalize if normalize is not None else self.normalize,
+    if resolved == "onnx":
+        from raggen.core.embeddings.backends.onnx import OnnxEmbedder  # noqa: PLC0415
+        return OnnxEmbedder(
+            model_id=model_id,
+            cache_dir=cache_dir,
+            batch_size=batch_size,
+            normalize=normalize,
         )
-        return np.asarray(vectors, dtype=np.float32)
+
+    if resolved == "torch":
+        from raggen.core.embeddings.backends.torch import TorchEmbedder  # noqa: PLC0415
+        return TorchEmbedder(
+            model_id=model_id,
+            cache_dir=cache_dir,
+            batch_size=batch_size,
+            normalize=normalize,
+        )
+
+    from raggen.core.config.project import ConfigError
+    raise ConfigError(
+        f"Unknown embedding backend: {resolved!r}. "
+        "Valid values are 'auto', 'onnx', and 'torch'."
+    )
+
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
 
 
 def embed_chunks(
-    embedder: LocalSentenceTransformerEmbedder,
+    embedder: "EmbedderBackend",
     chunks: Sequence,
 ) -> List[EmbeddingResult]:
-    """
-    Embed a sequence of chunks.
+    """Embed a sequence of chunks, returning one EmbeddingResult per chunk.
 
-    ``chunks`` must have:
+    chunks must have:
       - chunk.chunk_id (str)
       - chunk.text (str)
     """

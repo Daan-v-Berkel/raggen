@@ -52,6 +52,7 @@ def snapshot_foundational_config(cfg: ProjectConfig) -> FoundationalConfigSnapsh
         project_root=str(Path(cfg.project_root).resolve()),
         schema_version=cfg.schema_version,
         embedding_model=cfg.embedding.model_id,
+        embedding_backend=cfg.embedding.backend,
         embedding_dim=cfg.embedding.dim,
         storage_backend_key=cfg.storage.backend_key,
         database_url=cfg.storage.database_url,
