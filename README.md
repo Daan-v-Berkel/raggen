@@ -40,7 +40,6 @@ The default install uses [fastembed](https://github.com/qdrant/fastembed) (ONNX 
 
 | Extra | What it adds | When to use |
 |---|---|---|
-| `pip install 'raggen[gpu]'` | ONNX GPU via `onnxruntime-gpu` (~50 MB) | NVIDIA GPU, lighter than full CUDA |
 | `pip install 'raggen[torch]'` | sentence-transformers + PyTorch | Models not in fastembed's registry, or explicit PyTorch preference |
 | `pip install 'raggen[postgres]'` | PostgreSQL driver | PostgreSQL vector backend |
 
@@ -50,6 +49,8 @@ After installing `raggen[torch]`, activate it in `.rag/config.toml`:
 [embedding]
 backend = "torch"
 ```
+
+> fastembed is always installed as a core dependency. With `backend = "torch"` it is never imported at runtime — it is unused disk space only (~43 MB).
 
 ---
 
@@ -228,10 +229,10 @@ model_id = "sentence-transformers/all-MiniLM-L6-v2"
 backend  = "auto"   # "auto" | "onnx" | "torch"
 ```
 
-| Backend | Package | Default | Notes |
+| Backend | Installed by | Default | Notes |
 |---|---|---|---|
-| `onnx` | fastembed (included) | Yes | ONNX Runtime, no PyTorch. Fast, lightweight. |
-| `torch` | `raggen[torch]` | No | Full sentence-transformers + PyTorch. Supports any HuggingFace model. |
+| `onnx` | `pip install raggen` | Yes | ONNX Runtime, no PyTorch. Fast, lightweight. |
+| `torch` | `pip install 'raggen[torch]'` | No | Full sentence-transformers + PyTorch. Supports any HuggingFace model. |
 
 `backend = "auto"` uses ONNX if fastembed is installed, falls back to torch.
 

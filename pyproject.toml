@@ -60,11 +60,9 @@ classifiers = [
 ]
 
 [project.optional-dependencies]
-# Torch backend: full sentence-transformers + PyTorch (~200 MB CPU, ~2 GB GPU).
-# After install, set backend = "torch" in .rag/config.toml to activate.
+# Torch backend: sentence-transformers + PyTorch.
+# Set backend = "torch" in .rag/config.toml to activate after installing.
 torch = ["sentence-transformers>=5.0"]
-# ONNX GPU: swap onnxruntime for onnxruntime-gpu (~50 MB, no CUDA stack needed).
-gpu = ["fastembed[gpu]>=0.4.0"]
 dev = [
 "pytest",
 "flake8",
