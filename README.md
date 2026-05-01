@@ -34,10 +34,21 @@ rag query "how does the config system work?"
 pip install raggen
 ```
 
-For PostgreSQL support:
+The default install uses [fastembed](https://github.com/qdrant/fastembed) (ONNX Runtime) for embeddings — no GPU drivers or CUDA stack required. The first `rag build` downloads a small ONNX model (~23 MB).
 
-```bash
-pip install raggen[postgres]
+**Optional extras:**
+
+| Extra | What it adds | When to use |
+|---|---|---|
+| `pip install 'raggen[gpu]'` | ONNX GPU via `onnxruntime-gpu` (~50 MB) | NVIDIA GPU, lighter than full CUDA |
+| `pip install 'raggen[torch]'` | sentence-transformers + PyTorch | Models not in fastembed's registry, or explicit PyTorch preference |
+| `pip install 'raggen[postgres]'` | PostgreSQL driver | PostgreSQL vector backend |
+
+After installing `raggen[torch]`, activate it in `.rag/config.toml`:
+
+```toml
+[embedding]
+backend = "torch"
 ```
 
 ---
@@ -101,7 +112,8 @@ rag runs show <run-id>                     # show a specific run by ID
 
 ```toml
 [embedding]
-model_id  = "all-MiniLM-L6-v2"   # any sentence-transformers model
+model_id = "sentence-transformers/all-MiniLM-L6-v2"
+backend  = "auto"   # "auto" | "onnx" | "torch"
 normalize = true
 
 [storage]
@@ -208,14 +220,24 @@ When `unit = "tokens"`, raggen uses the tokenizer bundled with the configured em
 
 ## Embedding model
 
-raggen uses [sentence-transformers](https://www.sbert.net/) for local embedding. Any model compatible with sentence-transformers can be set in `config.toml`:
+raggen supports two embedding backends, selectable per project in `.rag/config.toml`:
 
 ```toml
 [embedding]
-model_id = "all-MiniLM-L6-v2"
+model_id = "sentence-transformers/all-MiniLM-L6-v2"
+backend  = "auto"   # "auto" | "onnx" | "torch"
 ```
 
-The model is downloaded on first use and cached locally. Subsequent runs load it from cache with no network access.
+| Backend | Package | Default | Notes |
+|---|---|---|---|
+| `onnx` | fastembed (included) | Yes | ONNX Runtime, no PyTorch. Fast, lightweight. |
+| `torch` | `raggen[torch]` | No | Full sentence-transformers + PyTorch. Supports any HuggingFace model. |
+
+`backend = "auto"` uses ONNX if fastembed is installed, falls back to torch.
+
+The model is downloaded on first use and cached under `model_cache_dir` (default `.rag/models/`). Subsequent runs load it from cache with no network access.
+
+**Switching backends on an existing project** invalidates stored embeddings — run `rag build --destructive && rag ingest` to rebuild. raggen detects this automatically and raises an error before any data is touched.
 
 ### Sequence length limits
 

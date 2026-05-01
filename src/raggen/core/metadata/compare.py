@@ -8,6 +8,7 @@ from raggen.core.metadata.models import FoundationalConfigSnapshot
 _BREAKING_SNAPSHOT_FIELDS: frozenset[str] = frozenset({
     "schema_version",
     "embedding_model",
+    "embedding_backend",
     "embedding_dim",
     "storage_backend_key",
     "database_url",
