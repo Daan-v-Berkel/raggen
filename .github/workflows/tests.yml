@@ -7,6 +7,36 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+    name: "test (${{ matrix.name }})"
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: onnx
+            extras: ".[dev]"
+
+          - name: torch
+            extras: ".[dev,torch]"
+
+          - name: postgres
+            extras: ".[dev,postgres]"
+            postgres: true
+            postgres_url: "postgresql://postgres:postgres@localhost:5432/raggen_test"
+
+    services:
+      postgres:
+        image: ${{ matrix.postgres && 'pgvector/pgvector:pg16' || '' }}
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: raggen_test
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
 
     steps:
       - name: Checkout repo
@@ -17,10 +47,29 @@ jobs:
         with:
           python-version: "3.12"
 
+      - name: Cache model downloads
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/huggingface
+            ~/.cache/fastembed
+          key: models-BAAI-bge-small-en-v1.5
+
       - name: Install project
         run: |
           python -m pip install --upgrade pip
-          pip install -e ."[dev]"
+          pip install -e "${{ matrix.extras }}"
 
       - name: Run tests
-        run: pytest
+        env:
+          POSTGRES_URL: ${{ matrix.postgres_url }}
+          HF_HOME: ~/.cache/huggingface
+          FASTEMBED_CACHE_PATH: ~/.cache/fastembed
+        run: pytest -m "not integration"
+
+      - name: Run integration tests
+        env:
+          POSTGRES_URL: ${{ matrix.postgres_url }}
+          HF_HOME: ~/.cache/huggingface
+          FASTEMBED_CACHE_PATH: ~/.cache/fastembed
+        run: pytest -m integration

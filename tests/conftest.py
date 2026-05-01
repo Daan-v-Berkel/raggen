@@ -1,3 +1,4 @@
+import os
 import pytest
 from pathlib import Path
 
@@ -157,3 +158,24 @@ def noop_backend_import():
     sys.modules["tests._noop_backend_mod"] = mod
 
     return "tests._noop_backend_mod:NoopBackend"
+
+
+# ---------------------------------------------------------------------------
+# Engine fixtures for real backend contract tests
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def sqlite_engine(tmp_path):
+    from sqlalchemy import create_engine
+    return create_engine(f"sqlite:///{tmp_path}/vec_test.db")
+
+
+@pytest.fixture
+def pg_engine():
+    url = os.environ.get("POSTGRES_URL")
+    if not url:
+        pytest.skip("POSTGRES_URL not set")
+    pytest.importorskip("psycopg2")
+    from sqlalchemy import create_engine
+    return create_engine(url)
