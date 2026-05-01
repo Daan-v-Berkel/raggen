@@ -1,6 +1,6 @@
 # Lazy re-export: importing this package does not pull in ingest_service
-# (and transitively sentence_transformers / torch) until do_ingest is
-# actually accessed.  This keeps `rag ingest` startup near-instant.
+# (and transitively the embedding backend) until do_ingest is actually
+# accessed.  This keeps `rag ingest` startup near-instant.
 
 __all__ = ["do_ingest"]
 

@@ -5,7 +5,7 @@ from raggen.core.query.generator import generate_answer, GenerationNotImplemente
 from raggen.core.store.metadata_store import MetadataStore
 from raggen.core.runtime import get_engine
 from raggen.core.config.project import ProjectConfig
-from raggen.core.embeddings.embedder import LocalSentenceTransformerEmbedder
+from raggen.core.embeddings.embedder import create_embedder
 from raggen.core.embeddings.model_specs_cache import ModelSpecsCache, MissingModelSpecsError
 from raggen.core.store.plugin_loader import load_vector_backend, resolve_vector_backend_import
 from raggen.core.results.envelope import ResultEnvelope, ResultMessage, init_result
@@ -48,8 +48,9 @@ def query(request: QueryRequest) -> ResultEnvelope:
 
     query_model_id = _resolve_query_model_id(request, cfg)
 
-    embedder = LocalSentenceTransformerEmbedder(
+    embedder = create_embedder(
         model_id=query_model_id,
+        backend=cfg.embedding.backend,
         cache_dir=cfg.embedding.model_cache_dir,
         normalize=cfg.embedding.normalize,
     )

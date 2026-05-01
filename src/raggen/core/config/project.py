@@ -65,13 +65,24 @@ def _default_chunking():
     }
 
 
+VALID_EMBEDDING_BACKENDS = frozenset({"auto", "onnx", "torch"})
+
+
 @dataclass
 class EmbeddingConfig(TOMLDataclass):
     model_id: str = "sentence-transformers/all-MiniLM-L6-v2"
+    backend: str = "auto"   # "auto" | "onnx" | "torch"
     model_cache_dir: str = ".rag/models/"
     dim: Optional[int] = None
     normalize: bool = True
     batch_size: int = 32
+
+    def __post_init__(self) -> None:
+        if self.backend not in VALID_EMBEDDING_BACKENDS:
+            raise ConfigError(
+                f"Invalid embedding backend {self.backend!r}. "
+                f"Must be one of: {', '.join(sorted(VALID_EMBEDDING_BACKENDS))}."
+            )
 
 
 @dataclass

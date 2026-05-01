@@ -15,7 +15,7 @@ from raggen.core.parsing.MarkdownParser import MarkdownParser
 from raggen.core.parsing.HtmlParser import HtmlParser
 from raggen.core.chunking.chunker import ChunkerRegistry
 from raggen.core.embeddings.embedder import (
-    LocalSentenceTransformerEmbedder,
+    create_embedder,
     embed_chunks,
 )
 from raggen.core.store import store_document_bundle, delete_documents, load_vector_backend, resolve_vector_backend_import
@@ -75,8 +75,9 @@ def do_ingest(
     registry.register(MarkdownParser())
     registry.register(HtmlParser())
     parser_service = ParserService(registry)
-    embedder = LocalSentenceTransformerEmbedder(
-        cfg.embedding.model_id,
+    embedder = create_embedder(
+        model_id=cfg.embedding.model_id,
+        backend=cfg.embedding.backend,
         cache_dir=cfg.embedding.model_cache_dir,
         batch_size=cfg.embedding.batch_size,
         normalize=cfg.embedding.normalize,

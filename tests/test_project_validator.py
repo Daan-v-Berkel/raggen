@@ -293,7 +293,7 @@ class TestDoIngestBreakingDriftDetection:
         """
         cfg = _bootstrap_project(tmp_path, monkeypatch)
         monkeypatch.setattr(
-            "raggen.core.ingest.ingest_service.LocalSentenceTransformerEmbedder",
+            "raggen.core.ingest.ingest_service.create_embedder",
             lambda *a, **kw: _dummy_embedder_factory(),
         )
 
@@ -312,7 +312,7 @@ class TestDoIngestBreakingDriftDetection:
         """
         cfg = _bootstrap_project(tmp_path, monkeypatch)
         monkeypatch.setattr(
-            "raggen.core.ingest.ingest_service.LocalSentenceTransformerEmbedder",
+            "raggen.core.ingest.ingest_service.create_embedder",
             lambda *a, **kw: _dummy_embedder_factory(),
         )
 
@@ -330,7 +330,7 @@ class TestDoIngestBreakingDriftDetection:
         """
         cfg = _bootstrap_project(tmp_path, monkeypatch)
         monkeypatch.setattr(
-            "raggen.core.ingest.ingest_service.LocalSentenceTransformerEmbedder",
+            "raggen.core.ingest.ingest_service.create_embedder",
             lambda *a, **kw: _dummy_embedder_factory(),
         )
 
