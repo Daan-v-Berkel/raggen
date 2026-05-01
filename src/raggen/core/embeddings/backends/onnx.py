@@ -6,12 +6,37 @@ import numpy as np
 
 from raggen.core.embeddings.capabilities import ModelLoadError
 
+# Attribute paths where fastembed exposes its inner ONNX model, ordered by
+# version prevalence. fastembed renamed _model → model at some point.
+_INNER_MODEL_ATTRS = ("model", "_model")
+
+
+def _extract_tokenizer(fe_model, model_id: str):
+    """Return the tokenizers.Tokenizer buried inside a fastembed TextEmbedding."""
+    for attr in _INNER_MODEL_ATTRS:
+        inner = getattr(fe_model, attr, None)
+        if inner is not None and hasattr(inner, "tokenizer"):
+            return inner.tokenizer
+    raise ModelLoadError(
+        f"Could not access tokenizer for model '{model_id}'. "
+        "fastembed's internal API may have changed. "
+        f"Searched attributes: {_INNER_MODEL_ATTRS}"
+    )
+
+
+def _extract_max_length(fe_model, tokenizer) -> int:
+    """Return the model's token capacity, falling back to 512 if not found."""
+    for attr in _INNER_MODEL_ATTRS:
+        inner = getattr(fe_model, attr, None)
+        if inner is not None and hasattr(inner, "max_length"):
+            return int(inner.max_length)
+    return int(getattr(tokenizer, "model_max_length", 512))
+
 
 class OnnxEmbedder:
     """Embedding backend backed by fastembed (ONNX Runtime).
 
     Default backend — no GPU driver or CUDA install required.
-    For ONNX GPU acceleration: pip install 'raggen[gpu]'
 
     Note: the normalize parameter is stored for interface compatibility but has
     no effect — fastembed always L2-normalises output vectors. If you need
@@ -39,8 +64,7 @@ class OnnxEmbedder:
         except ImportError as exc:
             raise ImportError(
                 "fastembed is not installed.\n"
-                "  Install with: pip install raggen\n"
-                "  GPU variant:  pip install 'raggen[gpu]'"
+                "  Install with: pip install raggen"
             ) from exc
 
         try:
@@ -64,23 +88,10 @@ class OnnxEmbedder:
         probe = np.array(list(self._model.embed(["probe"], batch_size=1)))
         self._dim = int(probe.shape[1])
 
-        # Capture tokenizer for get_length_function(). fastembed's ONNX backend
-        # exposes it at _model._model.tokenizer (tokenizers.Tokenizer).
-        try:
-            self._tokenizer = self._model._model.tokenizer
-        except AttributeError as exc:
-            raise ModelLoadError(
-                f"Could not access tokenizer for model '{model_id}'. "
-                "This may indicate an unsupported fastembed version.\n\n"
-                f"Original error: {exc}"
-            ) from exc
-
-        # max_length is the model's token capacity (includes special tokens).
-        try:
-            self._max_seq_length = int(self._model._model.max_length)
-        except AttributeError:
-            # Fall back to the tokenizer's model_max_length when available.
-            self._max_seq_length = getattr(self._tokenizer, "model_max_length", 512)
+        # fastembed's internal structure has changed across versions. Try known
+        # attribute paths in order rather than hardcoding one.
+        self._tokenizer = _extract_tokenizer(self._model, model_id)
+        self._max_seq_length = _extract_max_length(self._model, self._tokenizer)
 
     @property
     def dim(self) -> int:
