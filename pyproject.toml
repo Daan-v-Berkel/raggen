@@ -60,8 +60,6 @@ classifiers = [
 ]
 
 [project.optional-dependencies]
-# Torch backend: sentence-transformers + PyTorch.
-# Set backend = "torch" in .rag/config.toml to activate after installing.
 torch = ["sentence-transformers>=5.0"]
 dev = [
 "pytest",

@@ -7,6 +7,39 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+    name: "test (${{ matrix.name }})"
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: onnx
+            extras: ".[dev]"
+            run_integration: true
+
+          - name: torch
+            extras: ".[dev,torch]"
+            run_integration: false
+
+          - name: postgres
+            extras: ".[dev,postgres]"
+            postgres: true
+            postgres_url: "postgresql://postgres:postgres@localhost:5432/raggen_test"
+            run_integration: false
+
+    services:
+      postgres:
+        image: ${{ matrix.postgres && 'pgvector/pgvector:pg16' || '' }}
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: raggen_test
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
 
     steps:
       - name: Checkout repo
@@ -17,10 +50,29 @@ jobs:
         with:
           python-version: "3.12"
 
+      # Cache the model directory that is passed explicitly to the embedder
+      # via RAGGEN_MODEL_CACHE. fastembed and sentence-transformers both
+      # accept a cache_dir parameter so models are stored here, not in
+      # their own default locations.
+      - name: Cache model downloads
+        if: matrix.run_integration
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/raggen-models
+          key: raggen-models-bge-small-en-v1.5-v1
+
       - name: Install project
         run: |
           python -m pip install --upgrade pip
-          pip install -e ."[dev]"
+          pip install -e "${{ matrix.extras }}"
 
       - name: Run tests
-        run: pytest
+        env:
+          POSTGRES_URL: ${{ matrix.postgres_url }}
+        run: pytest -m "not integration"
+
+      - name: Run integration tests
+        if: matrix.run_integration
+        env:
+          RAGGEN_MODEL_CACHE: ~/.cache/raggen-models
+        run: pytest -m integration
