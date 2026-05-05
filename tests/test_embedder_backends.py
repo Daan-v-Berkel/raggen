@@ -3,7 +3,7 @@ Integration tests for real embedding backend implementations.
 
 These tests load actual models and produce real embeddings.
 They are marked `integration` because they require a network connection
-on the first run to download the model (~24 MB).
+on the first run to download the model (~65 MB).
 
 Run with:
     pytest -m integration tests/test_embedder_backends.py
@@ -11,14 +11,29 @@ Run with:
 ONNX tests always run when fastembed is installed (core dependency).
 Torch tests are skipped unless sentence-transformers is installed:
     pip install 'raggen[torch]'
+
+In CI the RAGGEN_MODEL_CACHE env var points to a cached directory so
+fastembed finds the model without re-downloading it on every run.
 """
 from __future__ import annotations
+
+import os
 
 import numpy as np
 import pytest
 
 # Small model used by both backends to allow sharing the CI model cache.
 _MODEL_ID = "BAAI/bge-small-en-v1.5"
+
+
+def _model_cache_dir() -> str | None:
+    """Return the model cache directory, or None to use the backend default.
+
+    In CI, set RAGGEN_MODEL_CACHE to the restored cache path so fastembed
+    receives it explicitly via cache_dir and doesn't fall back to its own
+    default (which may not be on the cached path).
+    """
+    return os.environ.get("RAGGEN_MODEL_CACHE") or None
 
 
 # ---------------------------------------------------------------------------
@@ -30,7 +45,17 @@ _MODEL_ID = "BAAI/bge-small-en-v1.5"
 def onnx_embedder():
     pytest.importorskip("fastembed")
     from raggen.core.embeddings.backends.onnx import OnnxEmbedder
-    return OnnxEmbedder(model_id=_MODEL_ID, batch_size=4, normalize=True)
+    from raggen.core.embeddings.capabilities import ModelLoadError
+
+    try:
+        return OnnxEmbedder(
+            model_id=_MODEL_ID,
+            cache_dir=_model_cache_dir(),
+            batch_size=4,
+            normalize=True,
+        )
+    except (ModelLoadError, Exception) as exc:
+        pytest.skip(f"Could not load ONNX model '{_MODEL_ID}' (network unavailable?): {exc}")
 
 
 @pytest.mark.integration
@@ -78,7 +103,16 @@ def test_onnx_length_function_returns_int(onnx_embedder):
 def torch_embedder():
     pytest.importorskip("sentence_transformers")
     from raggen.core.embeddings.backends.torch import TorchEmbedder
-    return TorchEmbedder(model_id=_MODEL_ID, batch_size=4, normalize=True)
+
+    try:
+        return TorchEmbedder(
+            model_id=_MODEL_ID,
+            cache_dir=_model_cache_dir(),
+            batch_size=4,
+            normalize=True,
+        )
+    except Exception as exc:
+        pytest.skip(f"Could not load Torch model '{_MODEL_ID}' (network unavailable?): {exc}")
 
 
 @pytest.mark.integration
